@@ -78,9 +78,9 @@ cmd /c "set VERSION= && msbuild -Restore %SOURCE_ROOT%\wix\MoonlightSetup\Moonli
 if !ERRORLEVEL! NEQ 0 goto Error
 
 rem Rename the installer to match the publishing convention
-ren %INSTALLER_FOLDER%\MoonlightSetup.exe MoonlightSetup-%VERSION%.exe
+ren %INSTALLER_FOLDER%\MoonlightSetup.exe GilStreamingSetup-%VERSION%.exe
 
-echo Build successful for Moonlight v%VERSION% installer!
+echo Build successful for GilStreaming v%VERSION% installer!
 exit /b 0
 
 :Error

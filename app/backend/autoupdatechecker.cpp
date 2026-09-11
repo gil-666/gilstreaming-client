@@ -20,7 +20,7 @@ AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
             this, &AutoUpdateChecker::handleUpdateCheckRequestFinished);
 
     QString currentVersion(VERSION_STR);
-    qDebug() << "Current Moonlight version:" << currentVersion;
+    qDebug() << "Current GilStreaming version:" << currentVersion;
     parseStringToVersionQuad(currentVersion, m_CurrentVersionQuad);
 
     // Should at least have a 1.0-style version number
@@ -44,7 +44,10 @@ void AutoUpdateChecker::start()
 #endif
 
     // We'll get a callback when this is finished
-    QUrl url("https://moonlight-stream.org/updates/qt.json");
+    // The continuous release is replaced only after the full GitHub Actions
+    // build succeeds. Release assets provide a stable, public download URL,
+    // unlike short-lived Actions artifact URLs.
+    QUrl url("https://github.com/gil-666/gilstreaming-client/releases/download/continuous/update.json");
     QNetworkRequest request(url);
 #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     request.setAttribute(QNetworkRequest::Http2AllowedAttribute, true);
@@ -180,7 +183,7 @@ void AutoUpdateChecker::handleUpdateCheckRequestFinished(QNetworkReply* reply)
                     qDebug() << "Found update manifest match for current platform";
 
                     QString latestVersion = updateObj["version"].toString();
-                    qDebug() << "Latest version of Moonlight for this platform is:" << latestVersion;
+                    qDebug() << "Latest version of GilStreaming for this platform is:" << latestVersion;
 
                     QVector<int> latestVersionQuad;
                     parseStringToVersionQuad(latestVersion, latestVersionQuad);

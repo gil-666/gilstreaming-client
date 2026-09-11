@@ -417,15 +417,14 @@ ApplicationWindow {
 
                 function updateAvailable(version, url)
                 {
-                    ToolTip.text = qsTr("Update available for Moonlight: Version %1").arg(version)
+                    ToolTip.text = qsTr("GilStreaming update available: Version %1").arg(version)
                     updateButton.browserUrl = url
                     updateButton.visible = true
                 }
 
                 Component.onCompleted: {
                     AutoUpdateChecker.onUpdateAvailable.connect(updateAvailable)
-                    // GilStreaming will use its own signed update feed. Do not
-                    // offer upstream Moonlight binaries from this fork.
+                    AutoUpdateChecker.start()
                 }
 
                 Keys.onDownPressed: {
@@ -534,7 +533,7 @@ ApplicationWindow {
                     }
                 }
 
-                onClicked: profileMenu.open()
+                onClicked: profileMenu.openForProfileButton()
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -543,10 +542,27 @@ ApplicationWindow {
                               ? GilCoordinator.profileName
                               : qsTr("Account")
 
-                Menu {
+                Popup {
                     id: profileMenu
-                    x: profileButton.width - width
-                    y: profileButton.height
+                    parent: Overlay.overlay
+                    width: 300
+                    padding: 8
+                    modal: false
+                    focus: true
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+                    function openForProfileButton() {
+                        var buttonPosition = profileButton.mapToItem(Overlay.overlay,
+                                                                     profileButton.width,
+                                                                     profileButton.height + 6)
+                        x = Math.max(12, Math.min(buttonPosition.x - width,
+                                                  Overlay.overlay.width - width - 12))
+                        y = Math.max(12, Math.min(buttonPosition.y,
+                                                  Overlay.overlay.height - height - 12))
+                        open()
+                    }
+
+                    onOpened: accountSettingsButton.forceActiveFocus(Qt.PopupFocusReason)
 
                     background: Rectangle {
                         color: appSurfaceRaised
@@ -555,32 +571,78 @@ ApplicationWindow {
                         border.color: appBorder
                     }
 
-                    MenuItem {
-                        enabled: false
-                        text: GilCoordinator.profileName
-                    }
+                    contentItem: ColumnLayout {
+                        spacing: 4
 
-                    MenuItem {
-                        visible: GilCoordinator.profileEmail.length > 0
-                        height: visible ? implicitHeight : 0
-                        enabled: false
-                        text: GilCoordinator.profileEmail
-                    }
+                        Label {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+                            Layout.topMargin: 6
+                            text: GilCoordinator.profileName.length > 0
+                                  ? GilCoordinator.profileName
+                                  : qsTr("GILid account")
+                            color: appText
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
 
-                    MenuSeparator { }
+                        Label {
+                            visible: GilCoordinator.profileEmail.length > 0
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 10
+                            Layout.rightMargin: 10
+                            text: GilCoordinator.profileEmail
+                            color: appMutedText
+                            font.pointSize: 10
+                            elide: Text.ElideRight
+                        }
 
-                    MenuItem {
-                        text: qsTr("GILid account settings")
-                        onTriggered: GilCoordinator.openAccountSettings()
-                    }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                            Layout.bottomMargin: 2
+                            height: 1
+                            color: appBorder
+                        }
 
-                    MenuItem {
-                        text: qsTr("Log out")
-                        onTriggered: GilCoordinator.logout()
+                        Button {
+                            id: accountSettingsButton
+                            Layout.fillWidth: true
+                            flat: true
+                            text: qsTr("GILid account settings")
+                            contentItem: Label {
+                                text: accountSettingsButton.text
+                                color: appText
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: 10
+                            }
+                            onClicked: {
+                                profileMenu.close()
+                                GilCoordinator.openAccountSettings()
+                            }
+                        }
+
+                        Button {
+                            id: logoutButton
+                            Layout.fillWidth: true
+                            flat: true
+                            text: qsTr("Log out")
+                            contentItem: Label {
+                                text: logoutButton.text
+                                color: brandAccentHover
+                                verticalAlignment: Text.AlignVCenter
+                                leftPadding: 10
+                            }
+                            onClicked: {
+                                profileMenu.close()
+                                GilCoordinator.logout()
+                            }
+                        }
                     }
                 }
 
-                Keys.onDownPressed: profileMenu.open()
+                Keys.onDownPressed: profileMenu.openForProfileButton()
             }
         }
     }

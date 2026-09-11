@@ -7,6 +7,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gilstreaming-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   coordinator:
     name: Coordinator - ${{ matrix.name }}
@@ -90,6 +94,16 @@ jobs:
           cache: true
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@073e34d7c2ab4ae6961ed7cca690b3abd5ba5a7e
 
+      - name: Set continuous build version
+        if: matrix.configuration == 'Release'
+        shell: pwsh
+        run: |
+          $versionParts = (Get-Content -LiteralPath app\version.txt -Raw).Trim().Split('.')
+          if ($versionParts.Count -lt 2) { throw "app/version.txt must contain at least major.minor." }
+          $ciVersion = "$($versionParts[0]).$($versionParts[1]).${{ github.run_number }}"
+          Set-Content -LiteralPath app\version.txt -Value $ciVersion -NoNewline
+          "CI_VERSION=$ciVersion" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build client
         shell: pwsh
         run: .\scripts\build-client.ps1 -Configuration ${{ matrix.configuration }}
@@ -114,6 +128,71 @@ jobs:
         with:
           name: GilStreaming-Windows-x64-${{ matrix.configuration }}-${{ github.sha }}
           path: dist/client-windows-*
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build branded Windows installer
+        if: matrix.configuration == 'Release'
+        shell: pwsh
+        run: |
+          $buildRoot = Join-Path $PWD "build"
+          $buildFolder = Join-Path $buildRoot "build-x64-release"
+          $runnableFolder = Join-Path $PWD "dist\client-windows-release"
+          $payloadFolder = Join-Path $PWD "dist\installer-payload"
+          $installerFolder = Join-Path $buildRoot "installer-release"
+
+          New-Item -ItemType Directory -Force -Path $payloadFolder, $installerFolder | Out-Null
+          Get-ChildItem -LiteralPath $runnableFolder |
+            Where-Object Name -ne "GilStreaming.exe" |
+            Copy-Item -Destination $payloadFolder -Recurse
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $msbuild = & $vswhere -latest -products * -find "MSBuild\**\Bin\MSBuild.exe" |
+            Select-Object -First 1
+          if (-not $msbuild) { throw "MSBuild was not found." }
+
+          $Env:BUILD_ROOT = $buildRoot
+          $Env:BUILD_FOLDER = $buildFolder
+          $Env:BUILD_CONFIG = "release"
+          $Env:DEPLOY_FOLDER = $payloadFolder
+          $Env:INSTALLER_FOLDER = $installerFolder
+
+          & $msbuild -Restore wix\Moonlight\Moonlight.wixproj `
+            /p:Configuration=release /p:Platform=x64 `
+            "/p:MSBuildProjectExtensionsPath=$buildRoot\wix-product-obj\"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          & $msbuild -Restore wix\GilStreamingSetup\GilStreamingSetup.wixproj `
+            /p:Configuration=release /p:Platform=x64 `
+            "/p:MSBuildProjectExtensionsPath=$buildRoot\wix-bundle-obj\"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $installer = Join-Path $installerFolder "GilStreamingSetup.exe"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) {
+            throw "Installer build succeeded but $installer was not produced."
+          }
+
+          $publishFolder = Join-Path $PWD "dist\continuous-release"
+          New-Item -ItemType Directory -Force -Path $publishFolder | Out-Null
+          Copy-Item -LiteralPath $installer `
+            -Destination (Join-Path $publishFolder "GilStreamingSetup-x64.exe")
+
+          @(
+            [ordered]@{
+              platform = "windows"
+              arch = "x86_64"
+              version = $Env:CI_VERSION
+              browser_url = "https://github.com/gil-666/gilstreaming-client/releases/download/continuous/GilStreamingSetup-x64.exe"
+            }
+          ) | ConvertTo-Json -Depth 3 |
+            Set-Content -LiteralPath (Join-Path $publishFolder "update.json") -Encoding utf8NoBOM
+
+      - name: Upload Windows installer
+        if: matrix.configuration == 'Release'
+        uses: actions/upload-artifact@v6
+        with:
+          name: GilStreaming-Windows-Installer-${{ github.sha }}
+          path: dist/continuous-release/*
           if-no-files-found: error
           retention-days: 14
 
@@ -160,3 +239,43 @@ jobs:
           path: dist/GilStreaming-Linux-x64-${{ matrix.configuration }}.tar.gz
           if-no-files-found: error
           retention-days: 14
+
+  publish-continuous:
+    name: Publish latest successful build
+    needs: [coordinator, windows-client, linux-client]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download installer from this build
+        uses: actions/download-artifact@v7
+        with:
+          name: GilStreaming-Windows-Installer-${{ github.sha }}
+          path: dist
+
+      - name: Publish rolling continuous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          notes="Built from ${GITHUB_SHA} by successful GitHub Actions run ${GITHUB_RUN_NUMBER}."
+          if gh release view continuous >/dev/null 2>&1; then
+            gh release upload continuous \
+              dist/GilStreamingSetup-x64.exe dist/update.json --clobber
+            gh release edit continuous \
+              --target "$GITHUB_SHA" \
+              --title "GilStreaming continuous build" \
+              --notes "$notes" \
+              --prerelease \
+              --latest=false
+          else
+            gh release create continuous \
+              dist/GilStreamingSetup-x64.exe dist/update.json \
+              --target "$GITHUB_SHA" \
+              --title "GilStreaming continuous build" \
+              --notes "$notes" \
+              --prerelease \
+              --latest=false
+          fi

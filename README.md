@@ -84,6 +84,13 @@ started manually with **Run workflow**. Coordinator artifacts include their
 example configuration and platform-specific start script; private `.env` and
 `config.json` files are deliberately not embedded in public builds.
 
+After every fully successful build of `master`, the workflow also publishes a
+rolling `continuous` prerelease containing `GilStreamingSetup-x64.exe`. Release
+builds use a monotonically increasing `major.minor.run` version, so running a
+newer installer upgrades the existing installation. Installed Windows clients
+check the release's `update.json` manifest at startup and show an update button
+when that build is newer.
+
 ## Current status
 
 - Upstream Moonlight Qt source is imported on the `gilstreaming` branch.
