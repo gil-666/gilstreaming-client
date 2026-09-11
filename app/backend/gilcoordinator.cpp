@@ -10,7 +10,7 @@
 #include <QUuid>
 
 namespace {
-const char* DEFAULT_COORDINATOR_URL = "https://gilstreaming.gilservers.com:6766";
+const char* DEFAULT_COORDINATOR_URL = "https://gilstreaming.gilservers.com";
 
 QJsonObject responseObject(QNetworkReply* reply)
 {

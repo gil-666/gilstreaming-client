@@ -26,7 +26,7 @@ See [docs/architecture.md](docs/architecture.md) and
 [docs/coordinator-api.md](docs/coordinator-api.md) for the initial design.
 
 For public streaming, the coordinator endpoint is
-`https://gilstreaming.gilservers.com:6766`, while clients connect directly to
+`https://gilstreaming.gilservers.com`, while clients connect directly to
 `stream.gilservers.com` on the UPnP-published Sunshine port. Private discovered
 VM addresses and the Sunshine Web UI remain coordinator-only.
 

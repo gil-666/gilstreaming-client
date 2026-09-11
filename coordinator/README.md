@@ -52,7 +52,7 @@ For a local debug client, point it at the development coordinator before launch:
 $env:GILSTREAMING_COORDINATOR_URL = "http://127.0.0.1:6766"
 ```
 
-Production clients default to `https://gilstreaming.gilservers.com:6766`.
+Production clients default to `https://gilstreaming.gilservers.com`.
 
 The private coordinator-side endpoints and Sunshine base port are populated by
 mDNS. `publicAddress` is returned to clients with the discovered base port. For
