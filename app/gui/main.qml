@@ -42,6 +42,7 @@ ApplicationWindow {
     Connections {
         target: GilCoordinator
         function onAssignmentRevoked() {
+            profileMenuLayer.visible = false
             ComputerManager.clearAssignedHosts()
             if (!(stackView.currentItem instanceof LoginView)) {
                 stackView.clear(StackView.Immediate)
@@ -533,7 +534,12 @@ ApplicationWindow {
                     }
                 }
 
-                onClicked: profileMenu.openForProfileButton()
+                onClicked: {
+                    profileMenuLayer.visible = !profileMenuLayer.visible
+                    if (profileMenuLayer.visible) {
+                        accountSettingsButton.forceActiveFocus(Qt.PopupFocusReason)
+                    }
+                }
 
                 ToolTip.delay: 1000
                 ToolTip.timeout: 3000
@@ -542,107 +548,125 @@ ApplicationWindow {
                               ? GilCoordinator.profileName
                               : qsTr("Account")
 
-                Popup {
-                    id: profileMenu
-                    parent: Overlay.overlay
-                    width: 300
-                    padding: 8
-                    modal: false
-                    focus: true
-                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                Keys.onDownPressed: {
+                    profileMenuLayer.visible = true
+                    accountSettingsButton.forceActiveFocus(Qt.PopupFocusReason)
+                }
+            }
+        }
+    }
 
-                    function openForProfileButton() {
-                        var buttonPosition = profileButton.mapToItem(Overlay.overlay,
-                                                                     profileButton.width,
-                                                                     profileButton.height + 6)
-                        x = Math.max(12, Math.min(buttonPosition.x - width,
-                                                  Overlay.overlay.width - width - 12))
-                        y = Math.max(12, Math.min(buttonPosition.y,
-                                                  Overlay.overlay.height - height - 12))
-                        open()
+    // This is an ordinary top-level overlay instead of a Controls Popup. Some
+    // platform styles gave the nested profile Popup an invalid visual parent,
+    // making the avatar appear to do nothing when clicked.
+    Item {
+        id: profileMenuLayer
+        parent: Overlay.overlay
+        anchors.fill: parent
+        visible: false
+        z: 1000
+        focus: visible
+
+        Keys.onEscapePressed: {
+            visible = false
+            profileButton.forceActiveFocus(Qt.PopupFocusReason)
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: profileMenuLayer.visible = false
+        }
+
+        Rectangle {
+            id: profileMenuPanel
+            z: 1
+            width: Math.min(300, profileMenuLayer.width - 24)
+            height: profileMenuContents.implicitHeight + 16
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 12
+            anchors.rightMargin: 12
+            radius: 14
+            color: appSurfaceRaised
+            border.width: 1
+            border.color: appBorder
+
+            MouseArea {
+                anchors.fill: parent
+            }
+
+            ColumnLayout {
+                id: profileMenuContents
+                z: 1
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 4
+
+                Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    Layout.topMargin: 6
+                    text: GilCoordinator.profileName.length > 0
+                          ? GilCoordinator.profileName
+                          : qsTr("GILid account")
+                    color: appText
+                    font.bold: true
+                    elide: Text.ElideRight
+                }
+
+                Label {
+                    visible: GilCoordinator.profileEmail.length > 0
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 10
+                    Layout.rightMargin: 10
+                    text: GilCoordinator.profileEmail
+                    color: appMutedText
+                    font.pointSize: 10
+                    elide: Text.ElideRight
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    Layout.bottomMargin: 2
+                    height: 1
+                    color: appBorder
+                }
+
+                Button {
+                    id: accountSettingsButton
+                    Layout.fillWidth: true
+                    flat: true
+                    text: qsTr("GILid account settings")
+                    contentItem: Label {
+                        text: accountSettingsButton.text
+                        color: appText
+                        verticalAlignment: Text.AlignVCenter
+                        leftPadding: 10
                     }
-
-                    onOpened: accountSettingsButton.forceActiveFocus(Qt.PopupFocusReason)
-
-                    background: Rectangle {
-                        color: appSurfaceRaised
-                        radius: 14
-                        border.width: 1
-                        border.color: appBorder
-                    }
-
-                    contentItem: ColumnLayout {
-                        spacing: 4
-
-                        Label {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 10
-                            Layout.rightMargin: 10
-                            Layout.topMargin: 6
-                            text: GilCoordinator.profileName.length > 0
-                                  ? GilCoordinator.profileName
-                                  : qsTr("GILid account")
-                            color: appText
-                            font.bold: true
-                            elide: Text.ElideRight
-                        }
-
-                        Label {
-                            visible: GilCoordinator.profileEmail.length > 0
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 10
-                            Layout.rightMargin: 10
-                            text: GilCoordinator.profileEmail
-                            color: appMutedText
-                            font.pointSize: 10
-                            elide: Text.ElideRight
-                        }
-
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.topMargin: 6
-                            Layout.bottomMargin: 2
-                            height: 1
-                            color: appBorder
-                        }
-
-                        Button {
-                            id: accountSettingsButton
-                            Layout.fillWidth: true
-                            flat: true
-                            text: qsTr("GILid account settings")
-                            contentItem: Label {
-                                text: accountSettingsButton.text
-                                color: appText
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 10
-                            }
-                            onClicked: {
-                                profileMenu.close()
-                                GilCoordinator.openAccountSettings()
-                            }
-                        }
-
-                        Button {
-                            id: logoutButton
-                            Layout.fillWidth: true
-                            flat: true
-                            text: qsTr("Log out")
-                            contentItem: Label {
-                                text: logoutButton.text
-                                color: brandAccentHover
-                                verticalAlignment: Text.AlignVCenter
-                                leftPadding: 10
-                            }
-                            onClicked: {
-                                profileMenu.close()
-                                GilCoordinator.logout()
-                            }
-                        }
+                    onClicked: {
+                        profileMenuLayer.visible = false
+                        GilCoordinator.openAccountSettings()
                     }
                 }
 
-                Keys.onDownPressed: profileMenu.openForProfileButton()
+                Button {
+                    id: logoutButton
+                    Layout.fillWidth: true
+                    flat: true
+                    text: qsTr("Log out")
+                    contentItem: Label {
+                        text: logoutButton.text
+                        color: brandAccentHover
+                        verticalAlignment: Text.AlignVCenter
+                        leftPadding: 10
+                    }
+                    onClicked: {
+                        profileMenuLayer.visible = false
+                        GilCoordinator.logout()
+                    }
+                }
             }
         }
     }
