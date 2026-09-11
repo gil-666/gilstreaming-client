@@ -2,10 +2,10 @@ QT += core quick network quickcontrols2 svg
 CONFIG += c++17
 
 unix:!macx {
-    TARGET = moonlight
+    TARGET = gilstreaming
 } else {
     # On macOS, this is the name displayed in the global menu bar
-    TARGET = Moonlight
+    TARGET = GilStreaming
 }
 
 include(../globaldefs.pri)
@@ -171,6 +171,7 @@ SOURCES += \
     cli/pair.cpp \
     main.cpp \
     backend/computerseeker.cpp \
+    backend/gilcoordinator.cpp \
     backend/identitymanager.cpp \
     backend/nvcomputer.cpp \
     backend/nvhttp.cpp \
@@ -215,6 +216,7 @@ HEADERS += \
     settings/mappingfetcher.h \
     utils.h \
     backend/computerseeker.h \
+    backend/gilcoordinator.h \
     backend/identitymanager.h \
     backend/nvcomputer.h \
     backend/nvhttp.h \
@@ -546,9 +548,9 @@ unix:!macx: {
 }
 win32 {
     RC_ICONS = moonlight.ico
-    QMAKE_TARGET_COMPANY = Moonlight Game Streaming Project
-    QMAKE_TARGET_DESCRIPTION = Moonlight Game Streaming Client
-    QMAKE_TARGET_PRODUCT = Moonlight
+    QMAKE_TARGET_COMPANY = GilStreaming
+    QMAKE_TARGET_DESCRIPTION = GilStreaming Game Streaming Client
+    QMAKE_TARGET_PRODUCT = GilStreaming
 
     CONFIG -= embed_manifest_exe
     QMAKE_LFLAGS += /MANIFEST:embed /MANIFESTINPUT:$${PWD}/Moonlight.exe.manifest
