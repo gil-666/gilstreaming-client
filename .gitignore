@@ -7,3 +7,9 @@ build/
 libs/
 config.tests/*/.qmake.stash
 config.tests/*/Makefile
+
+# GilStreaming coordinator local secrets and runtime state
+**/.env
+coordinator/config.json
+coordinator/coordinator-state.json
+coordinator/coordinator-state.json.tmp
