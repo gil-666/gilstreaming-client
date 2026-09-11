@@ -40,6 +40,10 @@ func (vm VM) ClientEndpoint() (string, int) {
 	return vm.PublicAddress, port
 }
 
+func (vm VM) available() bool {
+	return vm.Enabled && vm.StreamAddress != "" && vm.StreamPort > 0 && vm.StreamPort <= 65535
+}
+
 func (s *Store) VMs() []VM {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -123,7 +127,7 @@ func (s *Store) CreateOrRecover(owner, deviceID, deviceName string) (*Lease, VM,
 		if lease.Owner == owner && lease.DeviceID == deviceID {
 			lease.ExpiresAt = now.Add(s.ttl)
 			vm, ok := s.vmByIDLocked(lease.VMID)
-			if !ok || !vm.Enabled {
+			if !ok || !vm.available() {
 				delete(s.leases, lease.ID)
 				break
 			}
@@ -139,7 +143,7 @@ func (s *Store) CreateOrRecover(owner, deviceID, deviceName string) (*Lease, VM,
 		occupied[lease.VMID] = true
 	}
 	for _, vm := range s.vms {
-		if !vm.Enabled || occupied[vm.ID] {
+		if !vm.available() || occupied[vm.ID] {
 			continue
 		}
 		id, err := randomID()
@@ -209,7 +213,7 @@ func (s *Store) LeaseVM(id, owner string) (*Lease, VM, error) {
 		return nil, VM{}, errLeaseForbidden
 	}
 	vm, ok := s.vmByIDLocked(lease.VMID)
-	if !ok || !vm.Enabled {
+	if !ok || !vm.available() {
 		return nil, VM{}, errLeaseNotFound
 	}
 	return cloneLease(lease), vm, nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,8 +10,7 @@ import (
 
 func TestSunshineDiscoveryUpdatesMatchingVM(t *testing.T) {
 	store := NewStore([]VM{{
-		ID: "vm-1", DiscoveryName: "v1", StreamAddress: "192.168.1.21",
-		StreamPort: 47989, SunshineAPIURL: "https://192.168.1.21:47990", Enabled: true,
+		ID: "vm-1", DiscoveryName: "v1", PublicAddress: "stream.gilservers.com", Enabled: true,
 	}}, time.Minute, filepath.Join(t.TempDir(), "state.json"))
 	discovery := NewSunshineDiscovery(time.Second)
 	discovery.browse = func(context.Context) ([]discoveredSunshine, error) {
@@ -28,6 +28,15 @@ func TestSunshineDiscoveryUpdatesMatchingVM(t *testing.T) {
 	}
 	if vm.SunshineAPIURL != "https://192.168.1.84:47990" {
 		t.Fatalf("unexpected discovered Sunshine URL: %s", vm.SunshineAPIURL)
+	}
+}
+
+func TestUndiscoveredVMIsUnavailable(t *testing.T) {
+	store := NewStore([]VM{{
+		ID: "vm-1", DiscoveryName: "v1", PublicAddress: "stream.gilservers.com", Enabled: true,
+	}}, time.Minute, filepath.Join(t.TempDir(), "state.json"))
+	if _, _, err := store.CreateOrRecover("user", "device", "Client"); !errors.Is(err, errPoolExhausted) {
+		t.Fatalf("expected undiscovered VM to be unavailable, got %v", err)
 	}
 }
 

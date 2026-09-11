@@ -101,10 +101,10 @@ func loadConfig(path string) (Config, error) {
 		return Config{}, errors.New("at least one VM is required")
 	}
 	for _, vm := range config.VMs {
-		if vm.ID == "" || vm.StreamAddress == "" || vm.StreamPort < 1 || vm.StreamPort > 65535 {
+		if vm.ID == "" || (vm.DiscoveryName == "" && (vm.StreamAddress == "" || vm.StreamPort < 1)) || vm.StreamPort > 65535 {
 			return Config{}, fmt.Errorf("invalid VM configuration for %q", vm.ID)
 		}
-		if vm.PublicPort < 0 || vm.PublicPort > 65535 || (vm.PublicAddress != "" && vm.PublicPort == 0) {
+		if vm.PublicPort < 0 || vm.PublicPort > 65535 {
 			return Config{}, fmt.Errorf("invalid public endpoint for VM %q", vm.ID)
 		}
 	}

@@ -90,20 +90,16 @@ The coordinator keeps these fields for each VM:
   "id": "vm-1",
   "displayName": "Gaming VM 1",
   "discoveryName": "v1",
-  "streamAddress": "192.168.1.23",
-  "streamPort": 47989,
   "publicAddress": "stream.gilservers.com",
-  "publicStreamPort": 47989,
-  "sunshineApiUrl": "https://192.168.1.23:47990",
   "enabled": true
 }
 ```
 
 `discoveryName` is the stable, unique Windows/Sunshine hostname advertised over
-mDNS. The coordinator refreshes the private stream and management IP addresses
-from `_nvstream._tcp.local` before creating or recovering a lease. The explicit
-private addresses are retained as a fallback. Only `publicAddress` and
-`publicStreamPort` are returned to the client when they are configured.
+mDNS. Before creating or recovering a lease, the coordinator derives the
+private address, Sunshine base port, and management URL from
+`_nvstream._tcp.local`. An undiscovered VM remains unavailable. The client gets
+`publicAddress` together with the discovered Sunshine base port.
 
 All VMs use the coordinator-only `SUNSHINE_USERNAME` and `SUNSHINE_PASSWORD`.
 Sunshine credentials are never fields returned by an API.

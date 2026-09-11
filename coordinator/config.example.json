@@ -8,11 +8,7 @@
       "id": "vm-1",
       "displayName": "Gaming VM 1",
       "discoveryName": "v1",
-      "streamAddress": "192.168.1.21",
-      "streamPort": 47989,
       "publicAddress": "stream.gilservers.com",
-      "publicStreamPort": 47989,
-      "sunshineApiUrl": "https://192.168.1.21:47990",
       "enabled": true
     }
   ]

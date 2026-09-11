@@ -33,8 +33,8 @@ func NewSunshineDiscovery(timeout time.Duration) *SunshineDiscovery {
 }
 
 // Refresh discovers configured Sunshine hosts by their stable mDNS name and
-// updates the coordinator's in-memory pool endpoints. Configured IP addresses
-// remain as a fallback when mDNS is temporarily unavailable.
+// updates the coordinator's in-memory pool endpoints. A discovery-only VM stays
+// unavailable when mDNS cannot resolve it, avoiding stale private addresses.
 func (d *SunshineDiscovery) Refresh(ctx context.Context, store *Store) error {
 	ctx, cancel := context.WithTimeout(ctx, d.timeout)
 	defer cancel()

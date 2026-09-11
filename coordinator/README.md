@@ -35,9 +35,9 @@ endpoints.
 
 Before granting a lease, the coordinator browses Sunshine's
 `_nvstream._tcp.local` mDNS service. Set `discoveryName` to the VM's unique
-Windows/Sunshine hostname (for example, `v1`). The discovered IPv4 address
-replaces both `streamAddress` and the host portion of `sunshineApiUrl` in memory.
-The configured address remains a fallback if mDNS is temporarily unavailable.
+Windows/Sunshine hostname (for example, `v1`). The coordinator derives the
+private stream address, Sunshine base port, and Web UI URL from that record. If
+the VM cannot be discovered, it is not assigned.
 Give each cloned VM a unique hostname (`v1`, `v2`, and so on); the shared
 Sunshine username and password do not need to change.
 
@@ -54,12 +54,11 @@ $env:GILSTREAMING_COORDINATOR_URL = "http://127.0.0.1:6766"
 
 Production clients default to `https://gilstreaming.gilservers.com:6766`.
 
-`streamAddress`, `streamPort`, and `sunshineApiUrl` are private coordinator-side
-endpoints and are refreshed by mDNS. `publicAddress` and `publicStreamPort` are
-returned to clients. For this deployment they are `stream.gilservers.com` and
-`47989`. The DNS record must resolve directly to the router's public IP, and
-Sunshine/UPnP must publish the corresponding GameStream port family. Do not
-publish Sunshine's Web UI port (`47990`).
+The private coordinator-side endpoints and Sunshine base port are populated by
+mDNS. `publicAddress` is returned to clients with the discovered base port. For
+this deployment it is `stream.gilservers.com`; Sunshine advertises and publishes
+port `47989`. The DNS record must resolve directly to the router's public IP.
+Do not publish Sunshine's Web UI port (`47990`).
 
 Run tests with `go test ./...`.
 
