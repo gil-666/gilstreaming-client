@@ -17,9 +17,11 @@ jobs:
           - name: Windows-x64
             os: windows-2025
             output: gilstreaming-coordinator.exe
+            artifactPath: dist/coordinator-package
           - name: Linux-x64
             os: ubuntu-24.04
             output: gilstreaming-coordinator
+            artifactPath: dist/GilStreaming-Coordinator-Linux-x64.tar.gz
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -40,14 +42,29 @@ jobs:
         shell: bash
         working-directory: coordinator
         run: |
-          mkdir -p ../dist/coordinator
-          go build -trimpath -o "../dist/coordinator/${{ matrix.output }}" .
+          mkdir -p ../dist/coordinator-package
+          go build -trimpath -o "../dist/coordinator-package/${{ matrix.output }}" .
+          cp config.example.json .env.example README.md ../dist/coordinator-package/
+
+      - name: Add Windows launcher
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item coordinator\start-coordinator.ps1 dist\coordinator-package\
+
+      - name: Package Linux coordinator
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cp coordinator/start-coordinator.sh dist/coordinator-package/
+          chmod +x dist/coordinator-package/gilstreaming-coordinator \
+            dist/coordinator-package/start-coordinator.sh
+          tar -C dist/coordinator-package -czf dist/GilStreaming-Coordinator-Linux-x64.tar.gz .
 
       - name: Upload coordinator
         uses: actions/upload-artifact@v6
         with:
           name: GilStreaming-Coordinator-${{ matrix.name }}-${{ github.sha }}
-          path: dist/coordinator/${{ matrix.output }}
+          path: ${{ matrix.artifactPath }}
           if-no-files-found: error
           retention-days: 14
 

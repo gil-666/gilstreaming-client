@@ -80,7 +80,9 @@ Every push runs `.github/workflows/build.yml`. The workflow tests and builds the
 coordinator for Windows and Linux, builds Debug and Release clients for both
 platforms, and uploads commit-specific artifacts for 14 days. Download them from
 the pushed commit's run under the repository's **Actions** tab. It can also be
-started manually with **Run workflow**.
+started manually with **Run workflow**. Coordinator artifacts include their
+example configuration and platform-specific start script; private `.env` and
+`config.json` files are deliberately not embedded in public builds.
 
 ## Current status
 

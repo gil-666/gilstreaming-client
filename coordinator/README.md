@@ -62,6 +62,11 @@ Do not publish Sunshine's Web UI port (`47990`).
 
 Run tests with `go test ./...`.
 
+GitHub Actions coordinator downloads include the executable, example files, and
+a platform launcher. After extracting the artifact, copy `config.example.json`
+to `config.json`, copy `.env.example` to `.env`, fill in the private values, and
+run `start-coordinator.ps1` on Windows or `start-coordinator.sh` on Linux.
+
 From the repository root, the portable launcher builds the coordinator into the
 ignored `build/coordinator` directory and runs it with the local config and env
 files:
