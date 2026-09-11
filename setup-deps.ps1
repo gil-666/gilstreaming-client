@@ -3,7 +3,7 @@ $ErrorActionPreference = 'Stop'
 $Organization = "moonlight-stream"
 $PrebuiltRepo = "moonlight-qt-deps"
 $TargetDir = Join-Path $PSScriptRoot "libs\windows"
-$Assets = @("windows-x64.zip", "windows-ARM64.zip")
+$Assets = @("Windows-x64.zip", "Windows-ARM64.zip")
 $Tag = "v15"
 
 if (Test-Path $TargetDir) {
@@ -18,7 +18,9 @@ foreach ($AssetName in $Assets) {
     $ArchivePath = Join-Path $env:TEMP $AssetName
 
     Write-Host "Downloading $AssetName..." -ForegroundColor Cyan
-    curl.exe -s -L -f -o "$ArchivePath" "$Url"
+    curl.exe --silent --show-error --fail --location `
+        --retry 4 --retry-delay 2 `
+        --output "$ArchivePath" "$Url"
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
