@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=Moonlight
-Comment=Stream games and other applications from another PC running Sunshine or GeForce Experience
-Exec=moonlight
-Icon=moonlight
+Name=GilStreaming
+Comment=Stream games and applications from a GilStreaming gaming VM
+Exec=gilstreaming
+Icon=gilstreaming-logo
 Terminal=false
 Type=Application
 Categories=Qt;Game;Network;RemoteAccess;
-Keywords=nvidia;gamestream;stream;sunshine;remote play;
+Keywords=gilstreaming;gamestream;stream;sunshine;remote play;

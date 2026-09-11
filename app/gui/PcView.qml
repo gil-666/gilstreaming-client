@@ -83,24 +83,57 @@ CenteredGridView {
         return model
     }
 
-    Row {
+    Rectangle {
         anchors.centerIn: parent
-        spacing: 5
+        width: Math.min(parent.width - 48, 540)
+        height: 116
+        radius: 18
+        color: "#19171a"
+        border.width: 1
+        border.color: "#3b363d"
         visible: pcGrid.count === 0
 
-        BusyIndicator {
-            id: searchSpinner
-            visible: false
-            running: visible
-        }
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 18
 
-        Label {
-            height: searchSpinner.height
-            elide: Label.ElideRight
-            text: qsTr("Connecting to your assigned gaming VM...")
-            font.pointSize: 20
-            verticalAlignment: Text.AlignVCenter
-            wrapMode: Text.Wrap
+            Image {
+                Layout.preferredWidth: 58
+                Layout.preferredHeight: 58
+                source: "qrc:/res/gilstreaming-logo.png"
+                sourceSize.width: 116
+                sourceSize.height: 116
+                fillMode: Image.PreserveAspectFit
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 5
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Preparing your gaming VM")
+                    color: "#f5f1f5"
+                    font.pointSize: 18
+                    font.bold: true
+                    elide: Label.ElideRight
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Connecting securely and loading your games…")
+                    color: "#bdb5bf"
+                    font.pointSize: 11
+                    wrapMode: Text.Wrap
+                }
+            }
+
+            BusyIndicator {
+                Layout.preferredWidth: 38
+                Layout.preferredHeight: 38
+                running: visible
+            }
         }
     }
 

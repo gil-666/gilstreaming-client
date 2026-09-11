@@ -6,6 +6,17 @@ ItemDelegate {
 
     highlighted: grid.activeFocus && grid.currentItem === this
 
+    background: Rectangle {
+        radius: 18
+        color: parent.highlighted ? "#22c34ba9"
+                                  : parent.hovered ? "#19171a"
+                                                   : "transparent"
+        border.width: parent.highlighted || parent.hovered ? 1 : 0
+        border.color: parent.highlighted ? "#c34ba9" : "#3b363d"
+
+        Behavior on color { ColorAnimation { duration: 140 } }
+    }
+
     Keys.onLeftPressed: {
         grid.moveCurrentIndexLeft()
     }

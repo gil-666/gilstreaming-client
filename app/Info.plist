@@ -11,7 +11,7 @@
 	<key>CFBundleGetInfoString</key>
 	<string>Stream games and other applications from another PC</string>
 	<key>CFBundleIconFile</key>
-	<string>moonlight</string>
+	<string>gilstreaming</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.gilstreaming.client</string>
 	<key>NSHighResolutionCapable</key>

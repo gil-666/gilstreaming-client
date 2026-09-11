@@ -13,6 +13,15 @@ import SdlGamepadKeyNavigation 1.0
 
 ApplicationWindow {
     property bool pollingActive: false
+    readonly property color appBackground: "#1f1c20"
+    readonly property color appSurface: "#121113"
+    readonly property color appSurfaceRaised: "#19171a"
+    readonly property color appBorder: "#3b363d"
+    readonly property color appText: "#f5f1f5"
+    readonly property color appMutedText: "#bdb5bf"
+    readonly property color brandAccent: "#c34ba9"
+    readonly property color brandAccentHover: "#d65abc"
+    readonly property color brandAccentDark: "#4b183f"
 
     // Set by SettingsView to force the back operation to pop all
     // pages except the initial view. This is required when doing
@@ -22,6 +31,13 @@ ApplicationWindow {
     id: window
     width: 1280
     height: 600
+    color: appBackground
+
+    Material.theme: Material.Dark
+    Material.primary: appSurface
+    Material.accent: brandAccent
+    Material.background: appBackground
+    Material.foreground: appText
 
     Connections {
         target: GilCoordinator
@@ -35,12 +51,8 @@ ApplicationWindow {
 
     // This function runs prior to creation of the initial StackView item
     function doEarlyInit() {
-        // Override the background color to Material 2 colors for Qt 6.5+
-        // in order to improve contrast between GFE's placeholder box art
-        // and the background of the app grid.
-        if (SystemProperties.usesMaterial3Theme) {
-            Material.background = "#303030"
-        }
+        // Keep the branded palette consistent across Material 2 and 3.
+        Material.background = appBackground
 
         SdlGamepadKeyNavigation.enable()
     }
@@ -246,9 +258,21 @@ ApplicationWindow {
 
     header: ToolBar {
         id: toolBar
-        height: 60
+        height: 64
         anchors.topMargin: 5
         anchors.bottomMargin: 5
+
+        background: Rectangle {
+            color: appSurface
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: appBorder
+            }
+        }
 
         Label {
             id: titleLabel
@@ -266,6 +290,23 @@ ApplicationWindow {
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             anchors.fill: parent
+
+            Image {
+                Layout.preferredWidth: 38
+                Layout.preferredHeight: 38
+                source: "qrc:/res/gilstreaming-logo.png"
+                sourceSize.width: 76
+                sourceSize.height: 76
+                fillMode: Image.PreserveAspectFit
+            }
+
+            Label {
+                visible: toolBar.width > 900
+                text: qsTr("GilStreaming")
+                color: brandAccentHover
+                font.pointSize: 15
+                font.bold: true
+            }
 
             NavigableToolButton {
                 // Only make the button visible if the user has navigated somewhere.
@@ -463,6 +504,13 @@ ApplicationWindow {
                 Layout.preferredHeight: 46
                 padding: 5
 
+                background: Rectangle {
+                    radius: width / 2
+                    color: profileButton.down ? brandAccentDark : appSurfaceRaised
+                    border.width: 1
+                    border.color: profileButton.hovered ? brandAccent : appBorder
+                }
+
                 contentItem: Item {
                     Image {
                         id: profileImage
@@ -497,6 +545,13 @@ ApplicationWindow {
                     id: profileMenu
                     x: profileButton.width - width
                     y: profileButton.height
+
+                    background: Rectangle {
+                        color: appSurfaceRaised
+                        radius: 14
+                        border.width: 1
+                        border.color: appBorder
+                    }
 
                     MenuItem {
                         enabled: false
