@@ -11,6 +11,7 @@
 
 namespace {
 const char* DEFAULT_COORDINATOR_URL = "https://gilstreaming.gilservers.com";
+const char* DEFAULT_LAN_COORDINATOR_URL = "http://192.168.1.209:6766";
 const char* DEFAULT_ACCOUNT_SETTINGS_URL = "https://auth.gilservers.com/settings";
 
 QJsonObject responseObject(QNetworkReply* reply)
@@ -28,11 +29,13 @@ GilCoordinator::GilCoordinator(QObject* parent)
     : QObject(parent),
       m_Busy(false),
       m_Quitting(false),
-      m_RestoreAttempted(false)
+      m_RestoreAttempted(false),
+      m_UseLanCoordinator(false)
 {
-    const QString configuredUrl = qEnvironmentVariable("GILSTREAMING_COORDINATOR_URL",
-                                                        DEFAULT_COORDINATOR_URL);
-    m_BaseUrl = QUrl(configuredUrl);
+    m_PublicBaseUrl = QUrl(qEnvironmentVariable("GILSTREAMING_COORDINATOR_URL",
+                                                 DEFAULT_COORDINATOR_URL));
+    m_LanBaseUrl = QUrl(qEnvironmentVariable("GILSTREAMING_LAN_COORDINATOR_URL",
+                                              DEFAULT_LAN_COORDINATOR_URL));
     m_AccountSettingsUrl = QUrl(qEnvironmentVariable("GILID_ACCOUNT_SETTINGS_URL",
                                                       DEFAULT_ACCOUNT_SETTINGS_URL));
 
@@ -47,7 +50,9 @@ GilCoordinator::GilCoordinator(QObject* parent)
     m_ProfileName = settings.value("profileName").toString();
     m_ProfileEmail = settings.value("profileEmail").toString();
     m_ProfileAvatarUrl = settings.value("profileAvatarUrl").toString();
+    m_UseLanCoordinator = settings.value("useLanCoordinator", false).toBool();
     settings.endGroup();
+    m_BaseUrl = m_UseLanCoordinator ? m_LanBaseUrl : m_PublicBaseUrl;
 
     m_LoginPollTimer.setInterval(2000);
     connect(&m_LoginPollTimer, &QTimer::timeout, this, &GilCoordinator::pollLogin);
@@ -326,6 +331,49 @@ void GilCoordinator::logout()
     clearSession();
     setBusy(false);
     setStatus(tr("Sign in to request a gaming VM."));
+    emit assignmentRevoked();
+}
+
+void GilCoordinator::setUseLanCoordinator(bool enabled)
+{
+    if (m_UseLanCoordinator == enabled) {
+        return;
+    }
+
+    m_LoginPollTimer.stop();
+    m_LoginRequestId.clear();
+    m_HeartbeatTimer.stop();
+
+    // Prevent callbacks from requests against the previous endpoint from
+    // changing the freshly reset UI or its next lease.
+    const QList<QNetworkReply*> pendingReplies = m_Network.findChildren<QNetworkReply*>();
+    for (QNetworkReply* reply : pendingReplies) {
+        QObject::disconnect(reply, nullptr, this, nullptr);
+        reply->abort();
+        reply->deleteLater();
+    }
+
+    // Both endpoints route to the same coordinator. Leave the reservation in
+    // place so the next request recovers it by device ID without a release/create
+    // race that could briefly hand the VM to somebody else.
+    m_LeaseId.clear();
+
+    m_UseLanCoordinator = enabled;
+    m_BaseUrl = enabled ? m_LanBaseUrl : m_PublicBaseUrl;
+    m_RestoreAttempted = false;
+
+    QSettings settings;
+    settings.beginGroup("coordinator");
+    settings.setValue("useLanCoordinator", m_UseLanCoordinator);
+    settings.endGroup();
+    settings.sync();
+
+    setBusy(false);
+    setStatus(m_AccessToken.isEmpty()
+                  ? tr("Sign in to request a gaming VM.")
+                  : tr("Reconnecting through %1…").arg(m_BaseUrl.host()));
+    emit useLanCoordinatorChanged();
+    emit coordinatorUrlChanged();
     emit assignmentRevoked();
 }
 

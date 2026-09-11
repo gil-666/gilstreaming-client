@@ -5,6 +5,7 @@ import QtQuick.Window 2.2
 
 import StreamingPreferences 1.0
 import ComputerManager 1.0
+import GilCoordinator 1.0
 import SdlGamepadKeyNavigation 1.0
 import SystemProperties 1.0
 
@@ -1550,6 +1551,28 @@ Flickable {
             Column {
                 anchors.fill: parent
                 spacing: 5
+
+                Switch {
+                    id: lanCoordinatorToggle
+                    width: parent.width
+                    text: qsTr("Use LAN coordinator (testing)")
+                    font.pointSize: 12
+                    checked: GilCoordinator.useLanCoordinator
+                    onClicked: {
+                        GilCoordinator.setUseLanCoordinator(checked)
+                    }
+
+                    ToolTip.delay: 600
+                    ToolTip.timeout: 7000
+                    ToolTip.visible: hovered
+                    ToolTip.text: qsTr("Connect directly to the coordinator on your LAN. Changing this refreshes the client connection. Active endpoint: %1").arg(GilCoordinator.coordinatorUrl)
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: "#3b363d"
+                }
 
                 Label {
                     width: parent.width

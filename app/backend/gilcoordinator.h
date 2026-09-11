@@ -18,6 +18,8 @@ class GilCoordinator : public QObject
     Q_PROPERTY(QString profileAvatarUrl READ profileAvatarUrl NOTIFY profileAvatarUrlChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool authenticated READ authenticated NOTIFY authenticatedChanged)
+    Q_PROPERTY(bool useLanCoordinator READ useLanCoordinator NOTIFY useLanCoordinatorChanged)
+    Q_PROPERTY(QString coordinatorUrl READ coordinatorUrl NOTIFY coordinatorUrlChanged)
     Q_PROPERTY(bool developmentBuild READ developmentBuild CONSTANT)
 
 public:
@@ -29,6 +31,8 @@ public:
     QString profileAvatarUrl() const { return m_ProfileAvatarUrl; }
     bool busy() const { return m_Busy; }
     bool authenticated() const { return !m_AccessToken.isEmpty(); }
+    bool useLanCoordinator() const { return m_UseLanCoordinator; }
+    QString coordinatorUrl() const { return m_BaseUrl.toString(); }
     bool developmentBuild() const;
 
     Q_INVOKABLE void startLogin();
@@ -39,6 +43,7 @@ public:
     Q_INVOKABLE void releaseLease();
     Q_INVOKABLE void openAccountSettings();
     Q_INVOKABLE void logout();
+    Q_INVOKABLE void setUseLanCoordinator(bool enabled);
 
 signals:
     void statusTextChanged();
@@ -47,6 +52,8 @@ signals:
     void profileAvatarUrlChanged();
     void busyChanged();
     void authenticatedChanged();
+    void useLanCoordinatorChanged();
+    void coordinatorUrlChanged();
     void assignedHost(QString address, int port);
     void pairingApprovalFailed(QString message);
     void assignmentRevoked();
@@ -69,6 +76,8 @@ private:
     QTimer m_LoginPollTimer;
     QTimer m_HeartbeatTimer;
     QUrl m_BaseUrl;
+    QUrl m_PublicBaseUrl;
+    QUrl m_LanBaseUrl;
     QUrl m_AccountSettingsUrl;
     QString m_DeviceId;
     QString m_LoginRequestId;
@@ -81,4 +90,5 @@ private:
     bool m_Busy;
     bool m_Quitting;
     bool m_RestoreAttempted;
+    bool m_UseLanCoordinator;
 };

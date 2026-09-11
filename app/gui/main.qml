@@ -44,7 +44,8 @@ ApplicationWindow {
         function onAssignmentRevoked() {
             ComputerManager.clearAssignedHosts()
             if (!(stackView.currentItem instanceof LoginView)) {
-                stackView.replace("qrc:/gui/LoginView.qml")
+                stackView.clear(StackView.Immediate)
+                stackView.push("qrc:/gui/LoginView.qml", {}, StackView.Immediate)
             }
         }
     }
