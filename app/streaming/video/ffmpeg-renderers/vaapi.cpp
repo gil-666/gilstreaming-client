@@ -766,6 +766,14 @@ void VAAPIRenderer::notifyOverlayUpdated(Overlay::OverlayType type)
             overlayRect.x = 0;
             overlayRect.y = 0;
         }
+        else if (type == Overlay::OverlayShortcuts) {
+            // Bottom center with a small safe-area margin. Negative Y is
+            // resolved relative to the current window height at render time.
+            int windowWidth;
+            SDL_GetWindowSize(m_Window, &windowWidth, nullptr);
+            overlayRect.x = SDL_max(0, (windowWidth - newSurface->w) / 2);
+            overlayRect.y = -newSurface->h - 32;
+        }
 
         overlayRect.w = newSurface->w;
         overlayRect.h = newSurface->h;

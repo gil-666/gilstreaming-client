@@ -92,7 +92,7 @@ Item {
 
                 Label {
                     Layout.fillWidth: true
-                    text: qsTr("Your games.\nAnywhere.")
+                    text: qsTr("Free PC.\nBro.")
                     color: window.appText
                     font.pointSize: 34
                     font.weight: Font.Medium
@@ -102,7 +102,7 @@ Item {
                 Label {
                     Layout.fillWidth: true
                     Layout.maximumWidth: 390
-                    text: qsTr("Sign in once and GilStreaming will securely connect you to an available gaming VM whenever you're ready to play.")
+                    text: qsTr("Sign into GilServers and enjoy a motherfucking free pc for gaming.")
                     color: window.appMutedText
                     font.pointSize: 13
                     lineHeight: 1.35
@@ -138,7 +138,7 @@ Item {
                             spacing: 1
 
                             Label {
-                                text: qsTr("GILID SECURED")
+                                text: qsTr("GILSERVERS SECURED")
                                 color: window.appMutedText
                                 font.pixelSize: 10
                                 font.bold: true
@@ -197,7 +197,7 @@ Item {
 
                 Label {
                     Layout.fillWidth: true
-                    text: GilCoordinator.authenticated ? qsTr("Welcome back") : qsTr("Ready when you are")
+                    text: GilCoordinator.authenticated ? qsTr("Welcome back") : qsTr("Log in")
                     color: window.appText
                     font.pointSize: 25
                     font.bold: true
@@ -208,7 +208,7 @@ Item {
                     Layout.fillWidth: true
                     text: GilCoordinator.authenticated
                           ? qsTr("We're finding the best available gaming VM for you.")
-                          : qsTr("Continue with your GILid account. Your password stays in the secure browser sign-in flow.")
+                          : qsTr("Continue with your GILid account.")
                     color: window.appMutedText
                     font.pointSize: 12
                     lineHeight: 1.35

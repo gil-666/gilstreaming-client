@@ -10,6 +10,7 @@ namespace Overlay {
 enum OverlayType {
     OverlayDebug,
     OverlayStatusUpdate,
+    OverlayShortcuts,
     OverlayMax
 };
 
@@ -30,6 +31,7 @@ public:
     bool isOverlayEnabled(OverlayType type);
     char* getOverlayText(OverlayType type);
     void updateOverlayText(OverlayType type, const char* text);
+    void setOverlayOpacity(OverlayType type, Uint8 opacity);
     int getOverlayMaxTextLength();
     void setOverlayTextUpdated(OverlayType type);
     void setOverlayState(OverlayType type, bool enabled);

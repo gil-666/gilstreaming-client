@@ -292,6 +292,7 @@ ApplicationWindow {
             anchors.fill: parent
 
             Image {
+                visible: !(stackView.currentItem instanceof LoginView)
                 Layout.preferredWidth: 38
                 Layout.preferredHeight: 38
                 source: "qrc:/res/gilstreaming-logo.png"
@@ -301,7 +302,7 @@ ApplicationWindow {
             }
 
             Label {
-                visible: toolBar.width > 900
+                visible: toolBar.width > 900 && !(stackView.currentItem instanceof LoginView)
                 text: qsTr("GilStreaming")
                 color: brandAccentHover
                 font.pointSize: 15

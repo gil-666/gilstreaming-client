@@ -447,6 +447,11 @@ void VDPAURenderer::notifyOverlayUpdated(Overlay::OverlayType type)
             overlayRect.x0 = 0;
             overlayRect.y0 = 0;
         }
+        else if (type == Overlay::OverlayShortcuts) {
+            // Bottom center with a small safe-area margin
+            overlayRect.x0 = SDL_max(0, ((int)m_DisplayWidth - newSurface->w) / 2);
+            overlayRect.y0 = SDL_max(0, (int)m_DisplayHeight - newSurface->h - 32);
+        }
 
         overlayRect.x1 = overlayRect.x0 + newSurface->w;
         overlayRect.y1 = overlayRect.y0 + newSurface->h;

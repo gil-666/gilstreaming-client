@@ -1976,6 +1976,41 @@ void Session::exec()
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
 
+    // Show the essential controls over the live video briefly. This is a
+    // separate overlay so connection warnings and mouse-mode status remain
+    // independent while the hint is visible.
+    const QByteArray shortcutText = tr(
+        "QUICK CONTROLS\n"
+        "Ctrl+Alt+Shift+Q  -  Disconnect\n"
+        "Ctrl+Alt+Shift+Z  -  Release cursor\n"
+        "Ctrl+Alt+Shift+X  -  Toggle full screen\n"
+        "Start+Select+L1+R1  -  Disconnect with controller").toUtf8();
+    Uint32 shortcutOverlayStart = 0;
+    bool shortcutOverlayVisible = false;
+    bool shortcutOverlayShown = false;
+    const auto updateShortcutOverlay = [this, &shortcutOverlayStart, &shortcutOverlayVisible]() {
+        if (!shortcutOverlayVisible) {
+            return;
+        }
+
+        constexpr Uint32 visibleDurationMs = 7000;
+        constexpr Uint32 fadeDurationMs = 1000;
+        constexpr Uint32 totalDurationMs = visibleDurationMs + fadeDurationMs;
+        const Uint32 elapsed = SDL_GetTicks() - shortcutOverlayStart;
+
+        if (elapsed >= totalDurationMs) {
+            m_OverlayManager.setOverlayState(Overlay::OverlayShortcuts, false);
+            shortcutOverlayVisible = false;
+        }
+        else if (elapsed >= visibleDurationMs) {
+            const Uint32 remaining = totalDurationMs - elapsed;
+            const Uint32 opacity = ((remaining * 0xFF) / fadeDurationMs / 16) * 16;
+            m_OverlayManager.setOverlayOpacity(
+                Overlay::OverlayShortcuts,
+                static_cast<Uint8>(opacity));
+        }
+    };
+
     // Switch to async logging mode when we enter the SDL loop
     StreamUtils::enterAsyncLoggingMode();
 
@@ -1993,7 +2028,8 @@ void Session::exec()
         // NB: This behavior was introduced in SDL 2.0.16, but had a few critical
         // issues that could cause indefinite timeouts, delayed joystick detection,
         // and other problems.
-        if (!SDL_WaitEventTimeout(&event, 1000)) {
+        if (!SDL_WaitEventTimeout(&event, shortcutOverlayVisible ? 100 : 1000)) {
+            updateShortcutOverlay();
             presence.runCallbacks();
             continue;
         }
@@ -2010,10 +2046,12 @@ void Session::exec()
             // ARM core in the Steam Link, so we will wait 10 ms instead.
             SDL_Delay(10);
 #endif
+            updateShortcutOverlay();
             presence.runCallbacks();
             continue;
         }
 #endif
+        updateShortcutOverlay();
         switch (event.type) {
         case SDL_QUIT:
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -2240,6 +2278,20 @@ void Session::exec()
                                  "Failed to recreate decoder after reset");
                     emit displayLaunchError(tr("Unable to initialize video decoder. Please check your streaming settings and try again."));
                     goto DispatchDeferredCleanup;
+                }
+
+                if (!shortcutOverlayShown) {
+                    m_OverlayManager.updateOverlayText(Overlay::OverlayShortcuts, shortcutText.constData());
+                    m_OverlayManager.setOverlayOpacity(Overlay::OverlayShortcuts, 0xFF);
+                    m_OverlayManager.setOverlayState(Overlay::OverlayShortcuts, true);
+                    shortcutOverlayStart = SDL_GetTicks();
+                    shortcutOverlayVisible = true;
+                    shortcutOverlayShown = true;
+                }
+                else if (shortcutOverlayVisible) {
+                    // Re-upload the hint if the decoder was recreated during
+                    // its short display window.
+                    m_OverlayManager.setOverlayTextUpdated(Overlay::OverlayShortcuts);
                 }
 
                 // As of SDL 2.0.12, SDL_RecreateWindow() doesn't carry over mouse capture

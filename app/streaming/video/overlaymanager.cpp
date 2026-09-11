@@ -15,6 +15,9 @@ OverlayManager::OverlayManager() :
     m_Overlays[OverlayType::OverlayStatusUpdate].color = {0xCC, 0x00, 0x00, 0xFF};
     m_Overlays[OverlayType::OverlayStatusUpdate].fontSize = 36;
 
+    m_Overlays[OverlayType::OverlayShortcuts].color = {0xF5, 0xE7, 0xF3, 0xFF};
+    m_Overlays[OverlayType::OverlayShortcuts].fontSize = 20;
+
     // While TTF will usually not be initialized here, it is valid for that not to
     // be the case, since Session destruction is deferred and could overlap with
     // the lifetime of a new Session object.
@@ -61,6 +64,16 @@ char* OverlayManager::getOverlayText(OverlayType type)
 void OverlayManager::updateOverlayText(OverlayType type, const char* text)
 {
     SDL_utf8strlcpy(m_Overlays[type].text, text, sizeof(m_Overlays[0].text));
+    setOverlayTextUpdated(type);
+}
+
+void OverlayManager::setOverlayOpacity(OverlayType type, Uint8 opacity)
+{
+    if (m_Overlays[type].color.a == opacity) {
+        return;
+    }
+
+    m_Overlays[type].color.a = opacity;
     setOverlayTextUpdated(type);
 }
 
@@ -152,7 +165,7 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
             RenderTextOutlinedWrapped(m_Overlays[type].font,
                                       m_Overlays[type].text,
                                       m_Overlays[type].color,
-                                      {0, 0, 0, 255},
+                                      {0, 0, 0, textColor.a},
                                       4,
                                       1024)
             : nullptr);
@@ -170,6 +183,13 @@ SDL_Surface* OverlayManager::RenderTextOutlinedWrapped(TTF_Font* font, const cha
     if (text == nullptr || text[0] == '\0') {
         return nullptr;
     }
+
+    // SDL_ttf versions differ in whether they honor SDL_Color::a. Render at
+    // full opacity and apply it to the resulting pixels ourselves so fading is
+    // consistent across every video backend.
+    const Uint8 opacity = textColor.a;
+    textColor.a = SDL_ALPHA_OPAQUE;
+    outlineColor.a = SDL_ALPHA_OPAQUE;
 
     int oldOutline = TTF_GetFontOutline(font);
     TTF_SetFontOutline(font, outlineWidth);
@@ -205,7 +225,27 @@ SDL_Surface* OverlayManager::RenderTextOutlinedWrapped(TTF_Font* font, const cha
     SDL_BlitSurface(textSurface, nullptr, outlineSurface, &dst);
 
     SDL_FreeSurface(textSurface);
+
+    if (opacity != SDL_ALPHA_OPAQUE) {
+        if (SDL_MUSTLOCK(outlineSurface)) {
+            SDL_LockSurface(outlineSurface);
+        }
+
+        for (int y = 0; y < outlineSurface->h; y++) {
+            Uint32* row = reinterpret_cast<Uint32*>(
+                static_cast<Uint8*>(outlineSurface->pixels) + y * outlineSurface->pitch);
+            for (int x = 0; x < outlineSurface->w; x++) {
+                Uint8 r, g, b, a;
+                SDL_GetRGBA(row[x], outlineSurface->format, &r, &g, &b, &a);
+                row[x] = SDL_MapRGBA(outlineSurface->format, r, g, b,
+                                     static_cast<Uint8>((a * opacity) / SDL_ALPHA_OPAQUE));
+            }
+        }
+
+        if (SDL_MUSTLOCK(outlineSurface)) {
+            SDL_UnlockSurface(outlineSurface);
+        }
+    }
+
     return outlineSurface;
 }
-
-
