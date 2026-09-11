@@ -165,7 +165,7 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
             RenderTextOutlinedWrapped(m_Overlays[type].font,
                                       m_Overlays[type].text,
                                       m_Overlays[type].color,
-                                      {0, 0, 0, textColor.a},
+                                      SDL_Color{0, 0, 0, m_Overlays[type].color.a},
                                       4,
                                       1024)
             : nullptr);
