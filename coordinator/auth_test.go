@@ -26,7 +26,9 @@ func TestBrokeredGilIDLogin(t *testing.T) {
 			if r.Header.Get("Authorization") != "Bearer gilid-access-token" {
 				t.Fatal("profile request did not use the GILid access token")
 			}
-			writeJSON(w, http.StatusOK, gilIDProfile{ID: "user-123", Username: "gil"})
+			writeJSON(w, http.StatusOK, gilIDProfile{
+				ID: "user-123", Username: "gil", AvatarURL: "https://auth.example/avatar.png",
+			})
 		default:
 			http.NotFound(w, r)
 		}
@@ -76,14 +78,18 @@ func TestBrokeredGilIDLogin(t *testing.T) {
 	statusResponse := httptest.NewRecorder()
 	broker.Status(statusResponse, statusRequest)
 	var completed struct {
-		State       string `json:"state"`
-		AccessToken string `json:"accessToken"`
+		State       string       `json:"state"`
+		AccessToken string       `json:"accessToken"`
+		Profile     gilIDProfile `json:"profile"`
 	}
 	if err := json.NewDecoder(statusResponse.Body).Decode(&completed); err != nil {
 		t.Fatal(err)
 	}
 	if completed.State != "authenticated" || completed.AccessToken == "" {
 		t.Fatalf("unexpected status response: %s", statusResponse.Body.String())
+	}
+	if completed.Profile.AvatarURL != "https://auth.example/avatar.png" {
+		t.Fatalf("profile avatar was not forwarded: %s", statusResponse.Body.String())
 	}
 	if owner := broker.AuthenticateToken(completed.AccessToken); owner != "user-123" {
 		t.Fatalf("expected authenticated owner user-123, got %q", owner)

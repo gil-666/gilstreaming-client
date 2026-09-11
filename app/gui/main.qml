@@ -455,6 +455,76 @@ ApplicationWindow {
                 ToolTip.visible: hovered
                 ToolTip.text: qsTr("Settings") + (settingsShortcut.nativeText ? (" ("+settingsShortcut.nativeText+")") : "")
             }
+
+            RoundButton {
+                id: profileButton
+                visible: GilCoordinator.authenticated
+                Layout.preferredWidth: 46
+                Layout.preferredHeight: 46
+                padding: 5
+
+                contentItem: Item {
+                    Image {
+                        id: profileImage
+                        anchors.fill: parent
+                        source: GilCoordinator.profileAvatarUrl
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        visible: GilCoordinator.profileAvatarUrl.length > 0 && status === Image.Ready
+                    }
+
+                    Label {
+                        anchors.centerIn: parent
+                        text: GilCoordinator.profileName.length > 0
+                              ? GilCoordinator.profileName.charAt(0).toUpperCase()
+                              : "?"
+                        font.pointSize: 16
+                        font.bold: true
+                        visible: !profileImage.visible
+                    }
+                }
+
+                onClicked: profileMenu.open()
+
+                ToolTip.delay: 1000
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: GilCoordinator.profileName.length > 0
+                              ? GilCoordinator.profileName
+                              : qsTr("Account")
+
+                Menu {
+                    id: profileMenu
+                    x: profileButton.width - width
+                    y: profileButton.height
+
+                    MenuItem {
+                        enabled: false
+                        text: GilCoordinator.profileName
+                    }
+
+                    MenuItem {
+                        visible: GilCoordinator.profileEmail.length > 0
+                        height: visible ? implicitHeight : 0
+                        enabled: false
+                        text: GilCoordinator.profileEmail
+                    }
+
+                    MenuSeparator { }
+
+                    MenuItem {
+                        text: qsTr("GILid account settings")
+                        onTriggered: GilCoordinator.openAccountSettings()
+                    }
+
+                    MenuItem {
+                        text: qsTr("Log out")
+                        onTriggered: GilCoordinator.logout()
+                    }
+                }
+
+                Keys.onDownPressed: profileMenu.open()
+            }
         }
     }
 

@@ -11,6 +11,7 @@
 
 namespace {
 const char* DEFAULT_COORDINATOR_URL = "https://gilstreaming.gilservers.com";
+const char* DEFAULT_ACCOUNT_SETTINGS_URL = "https://auth.gilservers.com/settings";
 
 QJsonObject responseObject(QNetworkReply* reply)
 {
@@ -26,11 +27,14 @@ QJsonObject responseObject(QNetworkReply* reply)
 GilCoordinator::GilCoordinator(QObject* parent)
     : QObject(parent),
       m_Busy(false),
-      m_Quitting(false)
+      m_Quitting(false),
+      m_RestoreAttempted(false)
 {
     const QString configuredUrl = qEnvironmentVariable("GILSTREAMING_COORDINATOR_URL",
                                                         DEFAULT_COORDINATOR_URL);
     m_BaseUrl = QUrl(configuredUrl);
+    m_AccountSettingsUrl = QUrl(qEnvironmentVariable("GILID_ACCOUNT_SETTINGS_URL",
+                                                      DEFAULT_ACCOUNT_SETTINGS_URL));
 
     QSettings settings;
     settings.beginGroup("coordinator");
@@ -39,6 +43,10 @@ GilCoordinator::GilCoordinator(QObject* parent)
         m_DeviceId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         settings.setValue("deviceId", m_DeviceId);
     }
+    m_AccessToken = settings.value("accessToken").toString();
+    m_ProfileName = settings.value("profileName").toString();
+    m_ProfileEmail = settings.value("profileEmail").toString();
+    m_ProfileAvatarUrl = settings.value("profileAvatarUrl").toString();
     settings.endGroup();
 
     m_LoginPollTimer.setInterval(2000);
@@ -51,7 +59,9 @@ GilCoordinator::GilCoordinator(QObject* parent)
         releaseLease();
     });
 
-    setStatus(tr("Sign in to request a gaming VM."));
+    setStatus(m_AccessToken.isEmpty()
+                  ? tr("Sign in to request a gaming VM.")
+                  : tr("Restoring your GILid session…"));
 }
 
 bool GilCoordinator::developmentBuild() const
@@ -139,9 +149,18 @@ void GilCoordinator::handleAuthenticationResponse(QNetworkReply* reply, const QJ
 
     m_AccessToken = response.value("accessToken").toString();
     const QJsonObject profile = response.value("profile").toObject();
-    m_ProfileName = profile.value("username").toString();
+    m_ProfileEmail = profile.value("email").toString();
+    m_ProfileAvatarUrl = profile.value("avatar_url").toString();
+    if (m_ProfileAvatarUrl.isEmpty()) {
+        m_ProfileAvatarUrl = profile.value("picture").toString();
+    }
+    m_ProfileName = (profile.value("first_name").toString() + " " +
+                     profile.value("last_name").toString()).trimmed();
     if (m_ProfileName.isEmpty()) {
-        m_ProfileName = profile.value("email").toString();
+        m_ProfileName = profile.value("username").toString();
+    }
+    if (m_ProfileName.isEmpty()) {
+        m_ProfileName = m_ProfileEmail;
     }
     if (m_AccessToken.isEmpty()) {
         fail(tr("The coordinator returned an invalid login session."));
@@ -149,9 +168,21 @@ void GilCoordinator::handleAuthenticationResponse(QNetworkReply* reply, const QJ
         return;
     }
 
+    saveSession();
     emit authenticatedChanged();
     emit profileNameChanged();
+    emit profileEmailChanged();
+    emit profileAvatarUrlChanged();
     reply->deleteLater();
+    requestVm();
+}
+
+void GilCoordinator::resumeSavedSession()
+{
+    if (m_RestoreAttempted || m_AccessToken.isEmpty()) {
+        return;
+    }
+    m_RestoreAttempted = true;
     requestVm();
 }
 
@@ -169,9 +200,17 @@ void GilCoordinator::requestVm()
         const QJsonObject response = responseObject(reply);
         if (reply->error() != QNetworkReply::NoError) {
             const QString code = response.value("code").toString();
-            fail(code == "POOL_EXHAUSTED"
-                     ? tr("All gaming VMs are currently in use. Try again shortly.")
-                     : response.value("message").toString(tr("Could not reserve a gaming VM.")));
+            const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+            if (statusCode == 401) {
+                clearSession();
+                fail(tr("Your saved GILid session expired. Please sign in again."));
+                emit assignmentRevoked();
+            }
+            else {
+                fail(code == "POOL_EXHAUSTED"
+                         ? tr("All gaming VMs are currently in use. Try again shortly.")
+                         : response.value("message").toString(tr("Could not reserve a gaming VM.")));
+            }
             reply->deleteLater();
             return;
         }
@@ -204,7 +243,13 @@ void GilCoordinator::sendHeartbeat()
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (reply->error() != QNetworkReply::NoError) {
             m_HeartbeatTimer.stop();
-            setStatus(tr("The VM reservation was lost. Return to login and try again."));
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401) {
+                clearSession();
+                setStatus(tr("Your saved GILid session expired. Please sign in again."));
+            }
+            else {
+                setStatus(tr("The VM reservation was lost. Return to login and try again."));
+            }
             m_LeaseId.clear();
             emit assignmentRevoked();
         }
@@ -255,6 +300,70 @@ void GilCoordinator::releaseLease()
     if (!m_Quitting) {
         emit assignmentRevoked();
     }
+}
+
+void GilCoordinator::openAccountSettings()
+{
+    if (m_AccountSettingsUrl.isValid()) {
+        QDesktopServices::openUrl(m_AccountSettingsUrl);
+    }
+}
+
+void GilCoordinator::logout()
+{
+    m_LoginPollTimer.stop();
+    m_LoginRequestId.clear();
+
+    // Build the authenticated release request before clearing the token.
+    if (!m_LeaseId.isEmpty() && !m_AccessToken.isEmpty()) {
+        QNetworkReply* reply = m_Network.deleteResource(
+            requestFor("/v1/leases/" + m_LeaseId, true));
+        connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
+    }
+
+    m_LeaseId.clear();
+    m_HeartbeatTimer.stop();
+    clearSession();
+    setBusy(false);
+    setStatus(tr("Sign in to request a gaming VM."));
+    emit assignmentRevoked();
+}
+
+void GilCoordinator::saveSession()
+{
+    QSettings settings;
+    settings.beginGroup("coordinator");
+    settings.setValue("accessToken", m_AccessToken);
+    settings.setValue("profileName", m_ProfileName);
+    settings.setValue("profileEmail", m_ProfileEmail);
+    settings.setValue("profileAvatarUrl", m_ProfileAvatarUrl);
+    settings.endGroup();
+    settings.sync();
+}
+
+void GilCoordinator::clearSession()
+{
+    const bool wasAuthenticated = !m_AccessToken.isEmpty();
+    m_AccessToken.clear();
+    m_ProfileName.clear();
+    m_ProfileEmail.clear();
+    m_ProfileAvatarUrl.clear();
+
+    QSettings settings;
+    settings.beginGroup("coordinator");
+    settings.remove("accessToken");
+    settings.remove("profileName");
+    settings.remove("profileEmail");
+    settings.remove("profileAvatarUrl");
+    settings.endGroup();
+    settings.sync();
+
+    if (wasAuthenticated) {
+        emit authenticatedChanged();
+    }
+    emit profileNameChanged();
+    emit profileEmailChanged();
+    emit profileAvatarUrlChanged();
 }
 
 QByteArray GilCoordinator::devicePayload(bool includeName) const

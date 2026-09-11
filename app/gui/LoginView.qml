@@ -10,6 +10,8 @@ Item {
     objectName: qsTr("GilStreaming")
     focus: true
 
+    Component.onCompleted: GilCoordinator.resumeSavedSession()
+
     Connections {
         target: GilCoordinator
         function onAssignedHost(address, port) {
