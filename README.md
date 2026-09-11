@@ -74,6 +74,14 @@ installed. Linux requires the Qt and multimedia development packages listed
 below. Client build scripts only compile; the debug launchers run the existing
 debug binary and follow its log.
 
+## Continuous builds
+
+Every push runs `.github/workflows/build.yml`. The workflow tests and builds the
+coordinator for Windows and Linux, builds Debug and Release clients for both
+platforms, and uploads commit-specific artifacts for 14 days. Download them from
+the pushed commit's run under the repository's **Actions** tab. It can also be
+started manually with **Run workflow**.
+
 ## Current status
 
 - Upstream Moonlight Qt source is imported on the `gilstreaming` branch.

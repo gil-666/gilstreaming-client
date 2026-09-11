@@ -1,45 +1,145 @@
----
-name: Build
-permissions:
-  contents: read
+name: GilStreaming builds
 
 on:
   push:
-  pull_request:
-    branches:
-      - master
+  workflow_dispatch:
 
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
-  setup:
-    runs-on: ubuntu-latest
-    outputs:
-      ci_version: ${{ steps.set-ci-version.outputs.ci_version }}
+  coordinator:
+    name: Coordinator - ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows-x64
+            os: windows-2025
+            output: gilstreaming-coordinator.exe
+          - name: Linux-x64
+            os: ubuntu-24.04
+            output: gilstreaming-coordinator
+    runs-on: ${{ matrix.os }}
+
     steps:
-      - name: Set CI version
-        id: set-ci-version
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: coordinator/go.mod
+          cache-dependency-path: coordinator/go.sum
+
+      - name: Test coordinator
+        working-directory: coordinator
+        run: go test -count=1 ./...
+
+      - name: Build coordinator
         shell: bash
+        working-directory: coordinator
         run: |
-          CI_VERSION=`echo ${GITHUB_SHA} | cut -c1-6`
-          echo "ci_version=${CI_VERSION}" >> "${GITHUB_OUTPUT}"
+          mkdir -p ../dist/coordinator
+          go build -trimpath -o "../dist/coordinator/${{ matrix.output }}" .
 
-  build-appimage:
-    needs: setup
-    uses: ./.github/workflows/build-appimage.yml
-    with:
-      ci_version: ${{ needs.setup.outputs.ci_version }}
+      - name: Upload coordinator
+        uses: actions/upload-artifact@v6
+        with:
+          name: GilStreaming-Coordinator-${{ matrix.name }}-${{ github.sha }}
+          path: dist/coordinator/${{ matrix.output }}
+          if-no-files-found: error
+          retention-days: 14
 
-  build-steamlink:
-    needs: setup
-    uses: ./.github/workflows/build-steamlink.yml
-    with:
-      ci_version: ${{ needs.setup.outputs.ci_version }}
+  windows-client:
+    name: Windows client - ${{ matrix.configuration }}
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Debug, Release]
+    runs-on: windows-2025
 
-  build-windows-macos:
-    needs: setup
-    uses: ./.github/workflows/build-win-mac.yml
-    with:
-      ci_version: ${{ needs.setup.outputs.ci_version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: 6.11.2
+          arch: win64_msvc2022_64
+          cache: true
+          aqtsource: git+https://github.com/miurahr/aqtinstall.git@073e34d7c2ab4ae6961ed7cca690b3abd5ba5a7e
+
+      - name: Build client
+        shell: pwsh
+        run: .\scripts\build-client.ps1 -Configuration ${{ matrix.configuration }}
+
+      - name: Create runnable directory
+        shell: pwsh
+        run: |
+          $configuration = "${{ matrix.configuration }}".ToLowerInvariant()
+          $build = Join-Path $PWD "build\build-x64-$configuration"
+          $source = Join-Path $build "app\$configuration\GilStreaming.exe"
+          $destination = Join-Path $PWD "dist\client-windows-$configuration"
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          Copy-Item -LiteralPath $source -Destination $destination
+          Copy-Item "libs\windows\lib\x64\*.dll" -Destination $destination
+          Copy-Item (Join-Path $build "AntiHooking\$configuration\AntiHooking.dll") -Destination $destination
+          Copy-Item "app\SDL_GameControllerDB\gamecontrollerdb.txt" -Destination $destination
+          windeployqt --$configuration --qmldir app\gui --no-opengl-sw --no-sql --dir $destination $source
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Windows client
+        uses: actions/upload-artifact@v6
+        with:
+          name: GilStreaming-Windows-x64-${{ matrix.configuration }}-${{ github.sha }}
+          path: dist/client-windows-*
+          if-no-files-found: error
+          retention-days: 14
+
+  linux-client:
+    name: Linux client - ${{ matrix.configuration }}
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [debug, release]
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential qmake6 qt6-base-dev qt6-declarative-dev libqt6svg6-dev \
+            qml6-module-qtquick-controls qml6-module-qtquick-templates \
+            qml6-module-qtquick-layouts qml6-module-qtqml-workerscript \
+            qml6-module-qtquick-window qml6-module-qtquick \
+            libegl1-mesa-dev libgl1-mesa-dev libopus-dev libsdl2-dev \
+            libsdl2-ttf-dev libssl-dev libavcodec-dev libavformat-dev \
+            libswscale-dev libva-dev libvdpau-dev libxkbcommon-dev \
+            wayland-protocols libdrm-dev libpulse-dev libasound2-dev
+
+      - name: Build client
+        run: bash scripts/build-client.sh ${{ matrix.configuration }}
+
+      - name: Archive Linux client
+        run: |
+          mkdir -p dist
+          tar -C "build/build-linux-${{ matrix.configuration }}/app" \
+            -czf "dist/GilStreaming-Linux-x64-${{ matrix.configuration }}.tar.gz" gilstreaming
+
+      - name: Upload Linux client
+        uses: actions/upload-artifact@v6
+        with:
+          name: GilStreaming-Linux-x64-${{ matrix.configuration }}-${{ github.sha }}
+          path: dist/GilStreaming-Linux-x64-${{ matrix.configuration }}.tar.gz
+          if-no-files-found: error
+          retention-days: 14

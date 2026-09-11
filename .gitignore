@@ -17,3 +17,5 @@ config.tests/*/Makefile
 coordinator/config.json
 coordinator/coordinator-state.json
 coordinator/coordinator-state.json.tmp
+/coordinator-state.json
+/coordinator-state.json.tmp

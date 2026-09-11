@@ -39,5 +39,11 @@ finally {
 }
 
 Write-Host "Starting coordinator with $configPath"
-& $binary -config $configPath -env-file $envPath
-exit $LASTEXITCODE
+Push-Location (Join-Path $repoRoot "coordinator")
+try {
+    & $binary -config $configPath -env-file $envPath
+    exit $LASTEXITCODE
+}
+finally {
+    Pop-Location
+}

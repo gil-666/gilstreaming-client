@@ -26,4 +26,5 @@ echo "Building GilStreaming coordinator..."
 )
 
 echo "Starting coordinator with $config"
+cd "$repo_root/coordinator"
 exec "$binary" -config "$config" -env-file "$env_file"
