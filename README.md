@@ -30,6 +30,50 @@ For public streaming, the coordinator endpoint is
 `stream.gilservers.com` on the UPnP-published Sunshine port. Private discovered
 VM addresses and the Sunshine Web UI remain coordinator-only.
 
+## Portable build and run scripts
+
+The scripts resolve all paths from the repository, so they can be invoked from
+any working directory after cloning or copying the complete repository.
+
+Windows PowerShell:
+
+```powershell
+# Build and run the coordinator
+.\scripts\run-coordinator.ps1
+
+# Build the debug client
+.\scripts\build-client.ps1
+
+# Run the debug client and follow its log
+.\scripts\run-client-debug.ps1
+
+# Build the release client
+.\scripts\build-client.ps1 -Configuration Release
+```
+
+Linux:
+
+```bash
+# Build and run the coordinator
+bash scripts/run-coordinator.sh
+
+# Build the debug client
+bash scripts/build-client.sh
+
+# Run the debug client and follow its log
+bash scripts/run-client-debug.sh
+
+# Build the release client
+bash scripts/build-client.sh release
+```
+
+The coordinator scripts require Go 1.22 or newer. The build scripts initialize
+Git submodules automatically. Windows also downloads the prebuilt client
+dependencies when missing; Qt MSVC and Visual Studio Build Tools must already be
+installed. Linux requires the Qt and multimedia development packages listed
+below. Client build scripts only compile; the debug launchers run the existing
+debug binary and follow its log.
+
 ## Current status
 
 - Upstream Moonlight Qt source is imported on the `gilstreaming` branch.

@@ -62,6 +62,18 @@ Do not publish Sunshine's Web UI port (`47990`).
 
 Run tests with `go test ./...`.
 
+From the repository root, the portable launcher builds the coordinator into the
+ignored `build/coordinator` directory and runs it with the local config and env
+files:
+
+```powershell
+.\scripts\run-coordinator.ps1
+```
+
+```bash
+bash scripts/run-coordinator.sh
+```
+
 `devAuthEnabled` exposes the login-skip endpoint used by debug client builds.
 Set it to `false` anywhere except a controlled test environment. Release builds
 do not show the skip button.
