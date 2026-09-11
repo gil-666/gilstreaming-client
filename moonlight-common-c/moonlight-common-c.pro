@@ -40,6 +40,22 @@ unix:!macx {
 
 COMMON_C_DIR = $$PWD/moonlight-common-c
 ENET_DIR = $$COMMON_C_DIR/enet
+
+# The VM may still be bringing up its capture session after the GameStream
+# connection succeeds. Apply the maintained GilStreaming grace-period patch
+# before qmake generates compiler rules for moonlight-common-c.
+win32 {
+    PATCH_SCRIPT = $$shell_path($$PWD/../scripts/apply-client-patches.ps1)
+    !system(powershell -NoProfile -ExecutionPolicy Bypass -File $$shell_quote($$PATCH_SCRIPT)) {
+        error(Failed to apply GilStreaming client patches)
+    }
+} else {
+    PATCH_SCRIPT = $$shell_path($$PWD/../scripts/apply-client-patches.sh)
+    !system(bash $$shell_quote($$PATCH_SCRIPT)) {
+        error(Failed to apply GilStreaming client patches)
+    }
+}
+
 SOURCES += \
     $$ENET_DIR/callbacks.c \
     $$ENET_DIR/compress.c \

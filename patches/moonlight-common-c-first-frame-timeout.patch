@@ -1,0 +1,43 @@
+diff --git a/src/VideoStream.c b/src/VideoStream.c
+--- a/src/VideoStream.c
++++ b/src/VideoStream.c
+@@ -1,7 +1,7 @@
+ #include "Limelight-internal.h"
+ 
+ #define FIRST_FRAME_MAX 1500
+-#define FIRST_FRAME_TIMEOUT_SEC 10
++#define FIRST_FRAME_TIMEOUT_SEC 30
+ 
+ #define FIRST_FRAME_PORT 47996
+ 
+@@ -18,7 +18,7 @@ static PLT_THREAD decoderThread;
+ 
+ static bool receivedDataFromPeer;
+ static uint64_t firstDataTimeMs;
+-static bool receivedFullFrame;
++static volatile bool receivedFullFrame;
+ 
+ // We can't request an IDR frame until the depacketizer knows
+ // that a packet was lost. This timeout bounds the time that
+@@ -417,2 +417,6 @@ const RTP_VIDEO_STATS* LiGetRTPVideoStats(void) {
+     return &rtpQueue.stats;
+ }
++
++bool LiHasReceivedVideoFrame(void) {
++    return receivedFullFrame;
++}
+diff --git a/src/Limelight.h b/src/Limelight.h
+--- a/src/Limelight.h
++++ b/src/Limelight.h
+@@ -904,6 +904,11 @@ typedef struct _RTP_VIDEO_STATS {
+ 
+ const RTP_VIDEO_STATS* LiGetRTPVideoStats(void);
+ 
++// Returns true after the first complete video frame has been received.
++// This is useful for keeping connection UI visible while a host capture
++// session is still starting.
++bool LiHasReceivedVideoFrame(void);
++
+ // Port index flags for use with LiGetPortFromPortFlagIndex() and LiGetProtocolFromPortFlagIndex()
+ #define ML_PORT_INDEX_TCP_47984 0
+ #define ML_PORT_INDEX_TCP_47989 1

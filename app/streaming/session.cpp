@@ -142,6 +142,10 @@ void Session::clConnectionTerminated(int errorCode)
     event.type = SDL_QUIT;
     event.quit.timestamp = SDL_GetTicks();
     SDL_PushEvent(&event);
+
+    // Release the async startup thread if the connection terminates before
+    // the host produces its first complete video frame.
+    s_ActiveSession->m_FirstFrameWaitCancelled.store(true);
 }
 
 void Session::clLogMessage(const char* format, ...)
@@ -580,6 +584,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
       m_AsyncConnectionSuccess(false),
+      m_FirstFrameWaitCancelled(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
       m_AudioRenderer(nullptr),
@@ -1712,6 +1717,21 @@ bool Session::startConnectionAsync()
         return false;
     }
 
+    // LiStartConnection() returns once the transport is established, but a
+    // waking gaming VM may need several more seconds to produce video. Keep
+    // the Qt loading UI active until moonlight-common-c has reassembled the
+    // first complete frame. The library's first-frame timeout handles the
+    // failure path and its termination callback releases this wait.
+    emit waitingForFirstVideoFrame();
+
+    while (!LiHasReceivedVideoFrame() && !m_FirstFrameWaitCancelled.load()) {
+        QThread::msleep(50);
+    }
+
+    if (!LiHasReceivedVideoFrame()) {
+        return false;
+    }
+
     emit connectionStarted();
     return true;
 }
@@ -1767,6 +1787,9 @@ void Session::start()
 
 void Session::interrupt()
 {
+    // Release the first-frame wait immediately when the user cancels.
+    m_FirstFrameWaitCancelled.store(true);
+
     // Stop any connection in progress
     LiInterruptConnection();
 

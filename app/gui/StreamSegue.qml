@@ -11,17 +11,21 @@ Item {
     property string appName
     property string stageText : isResume ? qsTr("Resuming %1...").arg(appName) :
                                            qsTr("Starting %1...").arg(appName)
+    property int loadingSeconds: 0
+    property bool waitingForVideo: false
     property bool isResume : false
     property bool quitAfter : false
 
     function stageStarting(stage)
     {
-        // Update the spinner text
+        waitingForVideo = false
         stageText = qsTr("Starting %1...").arg(stage)
     }
 
     function stageFailed(stage, errorCode, failingPorts)
     {
+        loadingTimer.stop()
+
         // Display the error dialog after Session::exec() returns
         streamSegueErrorDialog.text = qsTr("Starting %1 failed: Error %2").arg(stage).arg(errorCode)
 
@@ -32,14 +36,21 @@ Item {
 
     function connectionStarted()
     {
+        loadingTimer.stop()
+
         // Hide the UI contents so the user doesn't
         // see them briefly when we pop off the StackView
-        stageSpinner.visible = false
-        stageLabel.visible = false
+        loadingPanel.visible = false
         hintText.visible = false
 
         // Hide the window now that streaming has begun
         window.visible = false
+    }
+
+    function waitingForFirstVideoFrame()
+    {
+        waitingForVideo = true
+        stageText = qsTr("Waiting for the first video frame...")
     }
 
     function displayLaunchError(text)
@@ -61,6 +72,8 @@ Item {
 
     function sessionFinished(portTestResult)
     {
+        loadingTimer.stop()
+
         if (portTestResult !== 0 && portTestResult !== -1 && streamSegueErrorDialog.text) {
             streamSegueErrorDialog.text += "\n\n" + qsTr("This PC's Internet connection is blocking Moonlight. Streaming over the Internet may not work while connected to this network.")
         }
@@ -116,6 +129,7 @@ Item {
         session.stageStarting.connect(stageStarting)
         session.stageFailed.connect(stageFailed)
         session.connectionStarted.connect(connectionStarted)
+        session.waitingForFirstVideoFrame.connect(waitingForFirstVideoFrame)
         session.displayLaunchError.connect(displayLaunchError)
         session.quitStarting.connect(quitStarting)
         session.sessionFinished.connect(sessionFinished)
@@ -126,6 +140,9 @@ Item {
         SystemProperties.waitForAsyncLoad()
 
         // Kick off the stream
+        loadingSeconds = 0
+        waitingForVideo = false
+        loadingTimer.start()
         spinnerTimer.start()
         streamLoader.active = true
     }
@@ -153,6 +170,13 @@ Item {
             // Run the streaming session to completion
             session.start()
         }
+    }
+
+    Timer {
+        id: loadingTimer
+        interval: 1000
+        repeat: true
+        onTriggered: loadingSeconds++
     }
 
     Loader {
@@ -208,24 +232,73 @@ Item {
         sourceComponent: Item {}
     }
 
-    Row {
+    Rectangle {
+        anchors.fill: parent
+        color: "#0b0f18"
+    }
+
+    Rectangle {
+        id: loadingPanel
         anchors.centerIn: parent
-        spacing: 5
+        width: Math.min(parent.width - 60, 680)
+        height: loadingContent.implicitHeight + 64
+        radius: 18
+        color: "#171d2b"
+        border.color: "#34405a"
+        border.width: 1
 
-        BusyIndicator {
-            id: stageSpinner
-            running: visible
-            visible: false
-        }
+        Column {
+            id: loadingContent
+            anchors.fill: parent
+            anchors.margins: 32
+            spacing: 14
 
-        Label {
-            id: stageLabel
-            height: stageSpinner.height
-            text: stageText
-            font.pointSize: 20
-            verticalAlignment: Text.AlignVCenter
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("Preparing your stream")
+                color: "white"
+                font.pointSize: 26
+                font.bold: true
+            }
 
-            wrapMode: Text.Wrap
+            BusyIndicator {
+                id: stageSpinner
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 72
+                height: 72
+                running: visible
+                visible: false
+            }
+
+            Label {
+                id: stageLabel
+                width: parent.width
+                text: stageText
+                color: "#e8edf7"
+                font.pointSize: 20
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+            }
+
+            Label {
+                width: parent.width
+                text: waitingForVideo ?
+                          qsTr("Your gaming VM may still be waking up. We'll start as soon as its first frame is ready.") :
+                          qsTr("Connecting securely to your assigned gaming VM.")
+                color: "#aebbd0"
+                font.pointSize: 13
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+            }
+
+            Label {
+                width: parent.width
+                visible: loadingSeconds >= 5
+                text: qsTr("Still working — %1 seconds elapsed").arg(loadingSeconds)
+                color: "#7fc8ff"
+                font.pointSize: 12
+                horizontalAlignment: Text.AlignHCenter
+            }
         }
     }
 
@@ -235,6 +308,7 @@ Item {
         anchors.bottomMargin: 50
         anchors.horizontalCenter: parent.horizontalCenter
         font.pointSize: 18
+        color: "#aebbd0"
         verticalAlignment: Text.AlignVCenter
 
         wrapMode: Text.Wrap

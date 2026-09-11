@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QSemaphore>
 #include <QQuickWindow>
 
@@ -131,6 +133,8 @@ signals:
     void stageFailed(QString stage, int errorCode, QString failingPorts);
 
     void connectionStarted();
+
+    void waitingForFirstVideoFrame();
 
     void displayLaunchError(QString text);
 
@@ -266,6 +270,7 @@ private:
     bool m_ShouldExit;
 
     bool m_AsyncConnectionSuccess;
+    std::atomic_bool m_FirstFrameWaitCancelled;
     int m_PortTestResults;
 
     int m_ActiveVideoFormat;
