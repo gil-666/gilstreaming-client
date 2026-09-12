@@ -430,6 +430,9 @@ QNetworkRequest GilCoordinator::requestFor(QString path, bool authenticatedReque
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "application/json");
+    if (m_UseLanCoordinator) {
+        request.setRawHeader("X-GilStreaming-LAN", "1");
+    }
     if (authenticatedRequest) {
         request.setRawHeader("Authorization", "Bearer " + m_AccessToken.toUtf8());
     }

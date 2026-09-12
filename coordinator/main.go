@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -181,12 +182,26 @@ func (s *Server) createLease(w http.ResponseWriter, r *http.Request, owner strin
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not create lease")
 		return
 	}
-	clientAddress, clientPort := vm.ClientEndpoint()
+	clientAddress, clientPort := endpointForRequest(vm, r)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"leaseId": lease.ID, "state": "reserved", "expiresAt": lease.ExpiresAt,
 		"host":            map[string]any{"name": vm.DisplayName, "address": clientAddress, "port": clientPort},
 		"pairingRequired": true,
 	})
+}
+
+func endpointForRequest(vm VM, r *http.Request) (string, int) {
+	if r.Header.Get("X-GilStreaming-LAN") == "1" {
+		return vm.StreamAddress, vm.StreamPort
+	}
+	host := r.Host
+	if parsedHost, _, err := net.SplitHostPort(host); err == nil {
+		host = parsedHost
+	}
+	if ip := net.ParseIP(strings.Trim(host, "[]")); ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
+		return vm.StreamAddress, vm.StreamPort
+	}
+	return vm.ClientEndpoint()
 }
 
 func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request, owner string) {

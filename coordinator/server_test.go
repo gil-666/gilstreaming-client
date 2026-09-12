@@ -94,6 +94,42 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 	}
 }
 
+func TestLeaseReturnsPrivateEndpointForLANCoordinator(t *testing.T) {
+	store := NewStore([]VM{{
+		ID: "vm-1", DisplayName: "Gaming VM 1", StreamAddress: "192.168.1.23",
+		StreamPort: 47989, PublicAddress: "stream.gilservers.com", PublicPort: 47989, Enabled: true,
+	}}, time.Minute, filepath.Join(t.TempDir(), "state.json"))
+	broker := &AuthBroker{
+		devAuthEnabled: true, pending: make(map[string]*pendingAuth),
+		stateToRequest: make(map[string]string), sessions: make(map[string]coordinatorSession),
+		now: time.Now,
+	}
+	server := newServer(store, broker)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /v1/auth/dev", broker.DevLogin)
+	mux.HandleFunc("POST /v1/leases", server.auth(server.createLease))
+
+	token := developmentToken(t, mux, "lan-device")
+	request := httptest.NewRequest(http.MethodPost, "http://192.168.1.209:6766/v1/leases",
+		strings.NewReader(`{"deviceId":"lan-device","deviceName":"LAN Client"}`))
+	request.Header.Set("Authorization", "Bearer "+token)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, request)
+
+	var assigned struct {
+		Host struct {
+			Address string `json:"address"`
+			Port    int    `json:"port"`
+		} `json:"host"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&assigned); err != nil {
+		t.Fatal(err)
+	}
+	if assigned.Host.Address != "192.168.1.23" || assigned.Host.Port != 47989 {
+		t.Fatalf("unexpected LAN endpoint: %#v", assigned.Host)
+	}
+}
+
 func developmentToken(t *testing.T, handler http.Handler, deviceID string) string {
 	t.Helper()
 	request := httptest.NewRequest(http.MethodPost, "/v1/auth/dev",

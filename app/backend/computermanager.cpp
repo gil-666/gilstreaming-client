@@ -14,6 +14,9 @@
 #define SER_HOSTS "hosts"
 #define SER_HOSTS_BACKUP "hostsbackup"
 
+static constexpr int SERVERINFO_MAX_ATTEMPTS = 3;
+static constexpr int SERVERINFO_RETRY_DELAY_MS = 1500;
+
 static QString authorizedAddressKey(const NvAddress& address)
 {
     return address.address().trimmed().toLower() + ':' + QString::number(address.port());
@@ -817,33 +820,47 @@ private:
 
     QString fetchServerInfo(NvHTTP& http)
     {
-        QString serverInfo;
-
         // Do nothing if we're quitting
         if (m_AboutToQuit) {
             return QString();
         }
 
         try {
-            // There's a race condition between GameStream servers reporting presence over
-            // mDNS and the HTTPS server being ready to respond to our queries. To work
-            // around this issue, we will issue the request again after a few seconds if
-            // we see a ServiceUnavailableError error.
-            try {
-                serverInfo = http.getServerInfo(NvHTTP::NVLL_VERBOSE);
-            } catch (const QtNetworkReplyException& e) {
-                if (e.getError() == QNetworkReply::ServiceUnavailableError) {
-                    qWarning() << "Retrying request in 5 seconds after ServiceUnavailableError";
-                    QThread::sleep(5);
-                    serverInfo = http.getServerInfo(NvHTTP::NVLL_VERBOSE);
-                    qInfo() << "Retry successful";
-                }
-                else {
-                    // Rethrow other errors
-                    throw e;
+            // A newly assigned remote host can take longer than one request timeout to
+            // answer while its NAT mapping or Sunshine service becomes ready. Retry
+            // timeouts as well as the existing service-unavailable case so a transient
+            // five-second failure doesn't immediately release the coordinator lease.
+            for (int attempt = 1; attempt <= SERVERINFO_MAX_ATTEMPTS; attempt++) {
+                try {
+                    QString serverInfo = http.getServerInfo(NvHTTP::NVLL_VERBOSE);
+                    if (attempt > 1) {
+                        qInfo() << "serverinfo request succeeded on attempt" << attempt;
+                    }
+                    return serverInfo;
+                } catch (const QtNetworkReplyException& e) {
+                    const bool retryable =
+                            e.getError() == QNetworkReply::TimeoutError ||
+                            e.getError() == QNetworkReply::ServiceUnavailableError;
+                    if (!retryable || attempt == SERVERINFO_MAX_ATTEMPTS) {
+                        throw;
+                    }
+
+                    qWarning() << "Retrying serverinfo request after transient network error"
+                               << e.getError() << "(attempt" << attempt + 1
+                               << "of" << SERVERINFO_MAX_ATTEMPTS << ')';
+
+                    // Sleep in short intervals so quitting doesn't leave this worker
+                    // blocked for the entire retry delay.
+                    for (int waited = 0;
+                         waited < SERVERINFO_RETRY_DELAY_MS && !m_AboutToQuit;
+                         waited += 100) {
+                        QThread::msleep(100);
+                    }
+                    if (m_AboutToQuit) {
+                        return QString();
+                    }
                 }
             }
-            return serverInfo;
         } catch (...) {
             if (!m_Mdns) {
                 unsigned int portTestResult;
@@ -862,6 +879,8 @@ private:
             }
             return QString();
         }
+
+        return QString();
     }
 
     void run()
