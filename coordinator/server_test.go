@@ -109,6 +109,7 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 		Turn struct {
 			Server       string `json:"server"`
 			Port         int    `json:"port"`
+			Ports        []int  `json:"ports"`
 			Username     string `json:"username"`
 			Credential   string `json:"credential"`
 			PeerAddress  string `json:"peerAddress"`
@@ -124,7 +125,8 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 	if assigned.Relay.URL != "wss://gilstreaming.gilservers.com/v1/relay" || assigned.Relay.BasePort != 47989 {
 		t.Fatalf("unexpected relay endpoint: %#v", assigned.Relay)
 	}
-	if assigned.Turn.Server != "turn.cloudflare.com" || assigned.Turn.Port != 3478 ||
+	if assigned.Turn.Server != "turn.cloudflare.com" || assigned.Turn.Port != 53 ||
+		len(assigned.Turn.Ports) != 2 || assigned.Turn.Ports[0] != 3478 || assigned.Turn.Ports[1] != 53 ||
 		assigned.Turn.Username != "lease-user" || assigned.Turn.Credential != "lease-secret" ||
 		assigned.Turn.PeerAddress != "stream.gilservers.com" || assigned.Turn.PeerBasePort != 47989 {
 		t.Fatalf("unexpected TURN endpoint: %#v", assigned.Turn)

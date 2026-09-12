@@ -6,12 +6,14 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QHostAddress>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkRequest>
 #include <QNetworkDatagram>
 #include <QProcess>
 #include <QQueue>
+#include <QStringList>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -205,6 +207,18 @@ bool RelayBridge::startTurnHelper(const QJsonObject& turn, int basePort, QString
         return false;
     }
 
+    QList<int> candidatePorts;
+    for (const QJsonValue& value : turn.value("ports").toArray()) {
+        const int candidatePort = value.toInt();
+        if (candidatePort >= 1 && candidatePort <= 65535 &&
+                !candidatePorts.contains(candidatePort)) {
+            candidatePorts.append(candidatePort);
+        }
+    }
+    if (!candidatePorts.contains(port)) {
+        candidatePorts.prepend(port);
+    }
+
 #ifdef Q_OS_WIN
     const QString helperName = QStringLiteral("GilStreamingTurnRelay.exe");
 #else
@@ -218,73 +232,78 @@ bool RelayBridge::startTurnHelper(const QJsonObject& turn, int basePort, QString
         return false;
     }
 
-    QProcess* process = new QProcess(this);
-    process->setProgram(helperPath);
-    process->setProcessChannelMode(QProcess::SeparateChannels);
-    process->start(QIODevice::ReadWrite);
-    if (!process->waitForStarted(3000)) {
-        if (errorMessage != nullptr) {
-            *errorMessage = tr("Could not start the bundled TURN helper: %1")
-                    .arg(process->errorString());
+    QStringList failures;
+    for (int candidatePort : std::as_const(candidatePorts)) {
+        QProcess* process = new QProcess(this);
+        process->setProgram(helperPath);
+        process->setProcessChannelMode(QProcess::SeparateChannels);
+        process->start(QIODevice::ReadWrite);
+        if (!process->waitForStarted(3000)) {
+            failures.append(tr("UDP %1: helper did not start (%2)")
+                            .arg(candidatePort).arg(process->errorString()));
+            delete process;
+            continue;
         }
-        delete process;
-        return false;
-    }
 
-    QJsonObject config{
-        {"serverAddress", server + QLatin1Char(':') + QString::number(port)},
-        {"username", username},
-        {"credential", credential},
-        {"peerAddress", peerAddress},
-        {"peerBasePort", peerBasePort},
-        {"localBasePort", basePort}
-    };
-    process->write(QJsonDocument(config).toJson(QJsonDocument::Compact));
-    process->write("\n");
-    process->closeWriteChannel();
+        QJsonObject config{
+            {"serverAddress", server + QLatin1Char(':') + QString::number(candidatePort)},
+            {"username", username},
+            {"credential", credential},
+            {"peerAddress", peerAddress},
+            {"peerBasePort", peerBasePort},
+            {"localBasePort", basePort}
+        };
+        process->write(QJsonDocument(config).toJson(QJsonDocument::Compact));
+        process->write("\n");
+        process->closeWriteChannel();
 
-    QByteArray output;
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < 10000 && process->state() != QProcess::NotRunning &&
-           !output.contains('\n')) {
-        process->waitForReadyRead(qMin(500, 10000 - static_cast<int>(timer.elapsed())));
+        QByteArray output;
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 10000 && process->state() != QProcess::NotRunning &&
+               !output.contains('\n')) {
+            process->waitForReadyRead(qMin(500, 10000 - static_cast<int>(timer.elapsed())));
+            output.append(process->readAllStandardOutput());
+        }
         output.append(process->readAllStandardOutput());
-    }
-    output.append(process->readAllStandardOutput());
-    if (!output.startsWith("READY ")) {
-        const QString details = QString::fromUtf8(process->readAllStandardError()).trimmed();
-        process->kill();
-        process->waitForFinished(1000);
-        if (errorMessage != nullptr) {
-            *errorMessage = details.isEmpty()
-                    ? tr("The TURN allocation timed out.")
-                    : tr("The TURN allocation failed: %1").arg(details);
+        if (!output.startsWith("READY ")) {
+            const QString details = QString::fromUtf8(process->readAllStandardError()).trimmed();
+            process->kill();
+            process->waitForFinished(1000);
+            failures.append(details.isEmpty()
+                            ? tr("UDP %1: allocation timed out").arg(candidatePort)
+                            : tr("UDP %1: %2").arg(candidatePort).arg(details));
+            delete process;
+            continue;
         }
-        delete process;
-        return false;
+
+        m_TurnProcess = process;
+        connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+                [this, process](int exitCode, QProcess::ExitStatus) {
+            if (m_TurnProcess != process) {
+                return;
+            }
+            m_TurnProcess = nullptr;
+            qWarning() << "TURN UDP helper exited with code" << exitCode
+                       << QString::fromUtf8(process->readAllStandardError()).trimmed();
+            process->deleteLater();
+            if (m_Running) {
+                QString fallbackError;
+                if (!startWebSocketUdpFallback(m_BasePort, &fallbackError)) {
+                    qWarning() << "Could not activate WebSocket UDP fallback:" << fallbackError;
+                    stop();
+                }
+            }
+        });
+        qInfo() << "Native TURN/UDP relay active on port" << candidatePort << ':'
+                << QString::fromUtf8(output).trimmed();
+        return true;
     }
 
-    m_TurnProcess = process;
-    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
-            [this, process](int exitCode, QProcess::ExitStatus) {
-        if (m_TurnProcess != process) {
-            return;
-        }
-        m_TurnProcess = nullptr;
-        qWarning() << "TURN UDP helper exited with code" << exitCode
-                   << QString::fromUtf8(process->readAllStandardError()).trimmed();
-        process->deleteLater();
-        if (m_Running) {
-            QString fallbackError;
-            if (!startWebSocketUdpFallback(m_BasePort, &fallbackError)) {
-                qWarning() << "Could not activate WebSocket UDP fallback:" << fallbackError;
-                stop();
-            }
-        }
-    });
-    qInfo() << "Native TURN/UDP relay active:" << QString::fromUtf8(output).trimmed();
-    return true;
+    if (errorMessage != nullptr) {
+        *errorMessage = tr("The TURN allocation failed: %1").arg(failures.join("; "));
+    }
+    return false;
 }
 
 void RelayBridge::stopTurnHelper()

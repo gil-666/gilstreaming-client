@@ -210,8 +210,18 @@ func (s *Server) createLease(w http.ResponseWriter, r *http.Request, owner strin
 		if s.turn != nil {
 			if credentials, ok := s.turn.CachedCredentials(); ok {
 				peerAddress, peerPort := vm.ClientEndpoint()
+				clientPort := credentials.Port
+				clientPorts := []int{credentials.Port}
+				// Cloudflare's native TURN service also accepts UDP on port 53.
+				// Prefer it for clients that only understand one port because some
+				// Windows/mobile networks silently drop UDP 3478. New clients try
+				// the advertised list in order and retain 3478 as the first choice.
+				if strings.EqualFold(credentials.Server, "turn.cloudflare.com") && credentials.Port != 53 {
+					clientPort = 53
+					clientPorts = append(clientPorts, 53)
+				}
 				response["turn"] = map[string]any{
-					"server": credentials.Server, "port": credentials.Port,
+					"server": credentials.Server, "port": clientPort, "ports": clientPorts,
 					"username": credentials.Username, "credential": credentials.Credential,
 					"expiresAt":   credentials.ExpiresAt,
 					"peerAddress": peerAddress, "peerBasePort": peerPort,
