@@ -70,6 +70,10 @@ func main() {
 	}
 	if server.turn == nil {
 		log.Printf("Cloudflare TURN is not configured; public clients will use the WebSocket fallback")
+	} else {
+		// Credential generation is external and must never delay VM allocation.
+		// Keep a reusable credential warm and refresh it well before expiry.
+		server.turn.Start(context.Background())
 	}
 	if err := discovery.Refresh(context.Background(), store); err != nil {
 		log.Printf("initial Sunshine discovery failed; VMs will refresh on demand: %v", err)
@@ -204,10 +208,7 @@ func (s *Server) createLease(w http.ResponseWriter, r *http.Request, owner strin
 			"url": relayURLForRequest(r), "basePort": vm.StreamPort,
 		}
 		if s.turn != nil {
-			credentials, turnErr := s.turn.Credentials(r.Context())
-			if turnErr != nil {
-				log.Printf("Cloudflare TURN credentials unavailable for lease=%s: %v", lease.ID, turnErr)
-			} else {
+			if credentials, ok := s.turn.CachedCredentials(); ok {
 				peerAddress, peerPort := vm.ClientEndpoint()
 				response["turn"] = map[string]any{
 					"server": credentials.Server, "port": credentials.Port,
@@ -215,6 +216,8 @@ func (s *Server) createLease(w http.ResponseWriter, r *http.Request, owner strin
 					"expiresAt":   credentials.ExpiresAt,
 					"peerAddress": peerAddress, "peerBasePort": peerPort,
 				}
+			} else {
+				log.Printf("Cloudflare TURN credentials not ready for lease=%s; using direct/WebSocket fallback", lease.ID)
 			}
 		}
 	}

@@ -10,7 +10,9 @@ import (
 
 func TestTurnProviderGeneratesUDPcredentials(t *testing.T) {
 	var authorization string
+	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
 		authorization = r.Header.Get("Authorization")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -32,6 +34,15 @@ func TestTurnProviderGeneratesUDPcredentials(t *testing.T) {
 	if credentials.Server != "turn.cloudflare.com" || credentials.Port != 3478 ||
 		credentials.Username != "temporary-user" || credentials.Credential != "temporary-password" {
 		t.Fatalf("unexpected TURN credentials: %#v", credentials)
+	}
+	if _, ok := provider.CachedCredentials(); !ok {
+		t.Fatal("generated TURN credentials were not cached")
+	}
+	if _, err := provider.Credentials(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if requestCount != 1 {
+		t.Fatalf("expected cached credentials to avoid a second API call, got %d requests", requestCount)
 	}
 }
 

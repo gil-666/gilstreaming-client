@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -79,6 +80,9 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 	server.turn = &TurnProvider{
 		keyID: "test-key", apiToken: "test-token", baseURL: turnAPI.URL,
 		httpClient: turnAPI.Client(), credentialTTL: time.Hour,
+	}
+	if _, err := server.turn.Credentials(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/auth/dev", broker.DevLogin)

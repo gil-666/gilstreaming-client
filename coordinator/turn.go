@@ -6,18 +6,23 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
 	defaultTurnCredentialsBaseURL = "https://rtc.live.cloudflare.com/v1/turn/keys"
 	turnCredentialTTL             = 24 * time.Hour
+	turnCredentialRefreshAdvance  = time.Hour
+	turnCredentialMinimumValidity = 5 * time.Minute
+	turnCredentialRetryDelay      = 15 * time.Second
 )
 
 type TurnProvider struct {
@@ -26,6 +31,8 @@ type TurnProvider struct {
 	baseURL       string
 	httpClient    *http.Client
 	credentialTTL time.Duration
+	mu            sync.RWMutex
+	cached        TurnCredentials
 }
 
 type TurnCredentials struct {
@@ -52,6 +59,59 @@ func NewTurnProviderFromEnvironment() (*TurnProvider, error) {
 }
 
 func (p *TurnProvider) Credentials(ctx context.Context) (TurnCredentials, error) {
+	if credentials, ok := p.CachedCredentials(); ok {
+		return credentials, nil
+	}
+	return p.refresh(ctx)
+}
+
+func (p *TurnProvider) CachedCredentials() (TurnCredentials, bool) {
+	p.mu.RLock()
+	credentials := p.cached
+	p.mu.RUnlock()
+	if credentials.Credential == "" ||
+		!credentials.ExpiresAt.After(time.Now().UTC().Add(turnCredentialMinimumValidity)) {
+		return TurnCredentials{}, false
+	}
+	return credentials, true
+}
+
+func (p *TurnProvider) Start(ctx context.Context) {
+	go func() {
+		var delay time.Duration
+		for {
+			if delay > 0 {
+				timer := time.NewTimer(delay)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+			}
+
+			credentials, err := p.refresh(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				log.Printf("Cloudflare TURN credential refresh failed; retrying in %s: %v",
+					turnCredentialRetryDelay, err)
+				delay = turnCredentialRetryDelay
+				continue
+			}
+
+			delay = time.Until(credentials.ExpiresAt.Add(-turnCredentialRefreshAdvance))
+			if delay < time.Minute {
+				delay = time.Minute
+			}
+			log.Printf("Cloudflare TURN credentials ready; refresh scheduled in %s",
+				delay.Round(time.Minute))
+		}
+	}()
+}
+
+func (p *TurnProvider) refresh(ctx context.Context) (TurnCredentials, error) {
 	requestBody, err := json.Marshal(map[string]int{"ttl": int(p.credentialTTL.Seconds())})
 	if err != nil {
 		return TurnCredentials{}, err
@@ -91,10 +151,14 @@ func (p *TurnProvider) Credentials(ctx context.Context) (TurnCredentials, error)
 		for _, rawURL := range iceServer.URLs {
 			server, port, ok := parseTurnUDPURL(rawURL)
 			if ok {
-				return TurnCredentials{
+				credentials := TurnCredentials{
 					Server: server, Port: port, Username: iceServer.Username,
 					Credential: iceServer.Credential, ExpiresAt: time.Now().UTC().Add(p.credentialTTL),
-				}, nil
+				}
+				p.mu.Lock()
+				p.cached = credentials
+				p.mu.Unlock()
+				return credentials, nil
 			}
 		}
 	}
