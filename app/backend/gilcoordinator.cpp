@@ -15,6 +15,7 @@ namespace {
 const char* DEFAULT_COORDINATOR_URL = "https://gilstreaming.gilservers.com";
 const char* DEFAULT_LAN_COORDINATOR_URL = "http://192.168.1.209:6766";
 const char* DEFAULT_ACCOUNT_SETTINGS_URL = "https://auth.gilservers.com/settings";
+constexpr int COORDINATOR_REQUEST_TIMEOUT_MS = 20000;
 
 QJsonObject responseObject(QNetworkReply* reply)
 {
@@ -213,6 +214,9 @@ void GilCoordinator::requestVm()
                 clearSession();
                 fail(tr("Your saved GILid session expired. Please sign in again."));
                 emit assignmentRevoked();
+            }
+            else if (reply->error() == QNetworkReply::TimeoutError) {
+                fail(tr("The coordinator took too long to respond. Try again."));
             }
             else {
                 fail(code == "POOL_EXHAUSTED"
@@ -497,6 +501,11 @@ QNetworkRequest GilCoordinator::requestFor(QString path, bool authenticatedReque
     QNetworkRequest request(url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setRawHeader("Accept", "application/json");
+    // Qt's reused HTTP/2 connection can remain half-open after the coordinator
+    // or reverse proxy restarts. Coordinator control messages are tiny, so use
+    // a bounded HTTP/1.1 request instead of leaving the UI busy indefinitely.
+    request.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
+    request.setTransferTimeout(COORDINATOR_REQUEST_TIMEOUT_MS);
     if (m_UseLanCoordinator) {
         request.setRawHeader("X-GilStreaming-LAN", "1");
     }
