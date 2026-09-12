@@ -29,10 +29,16 @@ type configuration struct {
 }
 
 type localEndpoint struct {
-	offset int
-	socket *net.UDPConn
-	mu     sync.RWMutex
-	peer   *net.UDPAddr
+	offset          int
+	localSocket     *net.UDPConn
+	turnSocket      net.PacketConn
+	turnClient      *turn.Client
+	relayConnection net.PacketConn
+	remote          *net.UDPAddr
+	mu              sync.RWMutex
+	peer            *net.UDPAddr
+	sentFirst       sync.Once
+	receivedFirst   sync.Once
 }
 
 func main() {
@@ -52,65 +58,31 @@ func run() error {
 		return err
 	}
 
-	turnSocket, err := net.ListenPacket("udp4", "0.0.0.0:0")
-	if err != nil {
-		return fmt.Errorf("open TURN socket: %w", err)
-	}
-	defer turnSocket.Close()
-
-	client, err := turn.NewClient(&turn.ClientConfig{
-		STUNServerAddr: config.ServerAddress,
-		TURNServerAddr: config.ServerAddress,
-		Username:       config.Username,
-		Password:       config.Credential,
-		Software:       "GilStreaming",
-		RTO:            250 * time.Millisecond,
-		Conn:           turnSocket,
-	})
-	if err != nil {
-		return fmt.Errorf("create TURN client: %w", err)
-	}
-	defer client.Close()
-	if err := client.Listen(); err != nil {
-		return fmt.Errorf("start TURN client: %w", err)
-	}
-	relayConnection, err := client.Allocate()
-	if err != nil {
-		return fmt.Errorf("allocate TURN relay: %w", err)
-	}
-	defer relayConnection.Close()
-
 	peerBase, err := net.ResolveUDPAddr("udp4", net.JoinHostPort(
 		config.PeerAddress, strconv.Itoa(config.PeerBasePort)))
 	if err != nil {
 		return fmt.Errorf("resolve Sunshine peer: %w", err)
 	}
-	if err := client.CreatePermission(peerBase); err != nil {
-		return fmt.Errorf("create TURN permission: %w", err)
-	}
 
 	endpoints := make(map[int]*localEndpoint, len(udpOffsets))
 	for _, offset := range udpOffsets {
-		address := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: config.LocalBasePort + offset}
-		socket, listenErr := net.ListenUDP("udp4", address)
-		if listenErr != nil {
+		endpoint, openErr := openEndpoint(config, peerBase, offset)
+		if openErr != nil {
 			closeEndpoints(endpoints)
-			return fmt.Errorf("open local UDP port %d: %w", address.Port, listenErr)
+			return openErr
 		}
-		_ = socket.SetReadBuffer(4 * 1024 * 1024)
-		_ = socket.SetWriteBuffer(4 * 1024 * 1024)
-		endpoints[offset] = &localEndpoint{offset: offset, socket: socket}
+		endpoints[offset] = endpoint
 	}
 	defer closeEndpoints(endpoints)
 
-	errorsChannel := make(chan error, len(endpoints)+1)
+	errorsChannel := make(chan error, len(endpoints)*2)
 	for _, endpoint := range endpoints {
-		go relayLocalPackets(endpoint, relayConnection, peerBase, errorsChannel)
+		go relayLocalPackets(endpoint, errorsChannel)
+		go relayRemotePackets(endpoint, peerBase, errorsChannel)
 	}
-	go relayRemotePackets(relayConnection, peerBase, config.PeerBasePort, endpoints, errorsChannel)
 
 	// The parent waits for this exact line before allowing Moonlight to connect.
-	fmt.Printf("READY %s\n", relayConnection.LocalAddr())
+	fmt.Printf("READY %d allocations\n", len(endpoints))
 
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
@@ -122,6 +94,62 @@ func run() error {
 	case relayErr := <-errorsChannel:
 		return relayErr
 	}
+}
+
+func openEndpoint(config configuration, peerBase *net.UDPAddr, offset int) (*localEndpoint, error) {
+	localAddress := &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: config.LocalBasePort + offset}
+	localSocket, err := net.ListenUDP("udp4", localAddress)
+	if err != nil {
+		return nil, fmt.Errorf("open local UDP port %d: %w", localAddress.Port, err)
+	}
+	_ = localSocket.SetReadBuffer(4 * 1024 * 1024)
+	_ = localSocket.SetWriteBuffer(4 * 1024 * 1024)
+
+	turnSocket, err := net.ListenPacket("udp4", "0.0.0.0:0")
+	if err != nil {
+		_ = localSocket.Close()
+		return nil, fmt.Errorf("open TURN socket for UDP offset %d: %w", offset, err)
+	}
+	client, err := turn.NewClient(&turn.ClientConfig{
+		STUNServerAddr: config.ServerAddress,
+		TURNServerAddr: config.ServerAddress,
+		Username:       config.Username,
+		Password:       config.Credential,
+		Software:       "GilStreaming",
+		RTO:            250 * time.Millisecond,
+		Conn:           turnSocket,
+	})
+	if err != nil {
+		_ = turnSocket.Close()
+		_ = localSocket.Close()
+		return nil, fmt.Errorf("create TURN client for UDP offset %d: %w", offset, err)
+	}
+	if err = client.Listen(); err != nil {
+		client.Close()
+		_ = turnSocket.Close()
+		_ = localSocket.Close()
+		return nil, fmt.Errorf("start TURN client for UDP offset %d: %w", offset, err)
+	}
+	relayConnection, err := client.Allocate()
+	if err != nil {
+		client.Close()
+		_ = turnSocket.Close()
+		_ = localSocket.Close()
+		return nil, fmt.Errorf("allocate TURN relay for UDP offset %d: %w", offset, err)
+	}
+	remote := &net.UDPAddr{IP: peerBase.IP, Port: peerBase.Port + offset}
+	if err = client.CreatePermission(remote); err != nil {
+		_ = relayConnection.Close()
+		client.Close()
+		_ = turnSocket.Close()
+		_ = localSocket.Close()
+		return nil, fmt.Errorf("create TURN permission for UDP offset %d: %w", offset, err)
+	}
+
+	return &localEndpoint{
+		offset: offset, localSocket: localSocket, turnSocket: turnSocket,
+		turnClient: client, relayConnection: relayConnection, remote: remote,
+	}, nil
 }
 
 func validateConfiguration(config configuration) error {
@@ -136,56 +164,61 @@ func validateConfiguration(config configuration) error {
 	return nil
 }
 
-func relayLocalPackets(endpoint *localEndpoint, relayConnection net.PacketConn,
-	peerBase *net.UDPAddr, errorsChannel chan<- error,
-) {
+func relayLocalPackets(endpoint *localEndpoint, errorsChannel chan<- error) {
 	buffer := make([]byte, 64*1024)
-	remote := &net.UDPAddr{IP: peerBase.IP, Port: peerBase.Port + endpoint.offset}
 	for {
-		count, sender, err := endpoint.socket.ReadFromUDP(buffer)
+		count, sender, err := endpoint.localSocket.ReadFromUDP(buffer)
 		if err != nil {
 			return
 		}
 		endpoint.mu.Lock()
 		endpoint.peer = sender
 		endpoint.mu.Unlock()
-		if _, err = relayConnection.WriteTo(buffer[:count], remote); err != nil {
+		if _, err = endpoint.relayConnection.WriteTo(buffer[:count], endpoint.remote); err != nil {
 			reportError(errorsChannel, fmt.Errorf("send UDP offset %d through TURN: %w", endpoint.offset, err))
 			return
 		}
+		endpoint.sentFirst.Do(func() {
+			fmt.Fprintf(os.Stderr, "UDP offset %d sent first packet through %s to %s\n",
+				endpoint.offset, endpoint.relayConnection.LocalAddr(), endpoint.remote)
+		})
 	}
 }
 
-func relayRemotePackets(relayConnection net.PacketConn, peerBase *net.UDPAddr,
-	peerBasePort int, endpoints map[int]*localEndpoint, errorsChannel chan<- error,
-) {
+func relayRemotePackets(endpoint *localEndpoint, peerBase *net.UDPAddr, errorsChannel chan<- error) {
 	buffer := make([]byte, 64*1024)
 	for {
-		count, sender, err := relayConnection.ReadFrom(buffer)
+		count, sender, err := endpoint.relayConnection.ReadFrom(buffer)
 		if err != nil {
 			reportError(errorsChannel, fmt.Errorf("receive TURN packet: %w", err))
 			return
 		}
 		udpSender, ok := sender.(*net.UDPAddr)
-		if !ok || !udpSender.IP.Equal(peerBase.IP) {
-			continue
-		}
-		endpoint := endpoints[udpSender.Port-peerBasePort]
-		if endpoint == nil {
+		if !ok || !udpSender.IP.Equal(peerBase.IP) || udpSender.Port != endpoint.remote.Port {
 			continue
 		}
 		endpoint.mu.RLock()
 		localPeer := endpoint.peer
 		endpoint.mu.RUnlock()
 		if localPeer != nil {
-			_, _ = endpoint.socket.WriteToUDP(buffer[:count], localPeer)
+			if _, err = endpoint.localSocket.WriteToUDP(buffer[:count], localPeer); err != nil {
+				reportError(errorsChannel, fmt.Errorf("deliver TURN packet for UDP offset %d: %w", endpoint.offset, err))
+				return
+			}
+			endpoint.receivedFirst.Do(func() {
+				fmt.Fprintf(os.Stderr, "UDP offset %d received first packet from %s\n",
+					endpoint.offset, udpSender)
+			})
 		}
 	}
 }
 
 func closeEndpoints(endpoints map[int]*localEndpoint) {
 	for _, endpoint := range endpoints {
-		_ = endpoint.socket.Close()
+		_ = endpoint.localSocket.Close()
+		_ = endpoint.relayConnection.Close()
+		endpoint.turnClient.Close()
+		_ = endpoint.turnSocket.Close()
 	}
 }
 

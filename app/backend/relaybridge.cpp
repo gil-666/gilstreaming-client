@@ -278,6 +278,12 @@ bool RelayBridge::startTurnHelper(const QJsonObject& turn, int basePort, QString
         }
 
         m_TurnProcess = process;
+        connect(process, &QProcess::readyReadStandardError, this, [process]() {
+            const QString details = QString::fromUtf8(process->readAllStandardError()).trimmed();
+            if (!details.isEmpty()) {
+                qInfo().noquote() << "TURN UDP:" << details;
+            }
+        });
         connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
                 [this, process](int exitCode, QProcess::ExitStatus) {
             if (m_TurnProcess != process) {
