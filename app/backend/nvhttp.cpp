@@ -12,6 +12,8 @@
 #include <QtEndian>
 #include <QNetworkProxy>
 
+#include <utility>
+
 #define FAST_FAIL_TIMEOUT_MS 2000
 #define REQUEST_TIMEOUT_MS 5000
 #define LAUNCH_TIMEOUT_MS 120000
@@ -70,6 +72,11 @@ void NvHTTP::setHttpsPort(uint16_t port)
 void NvHTTP::setTrueUid(bool useTrueUid)
 {
     m_UseTrueUid = useTrueUid;
+}
+
+void NvHTTP::setUniqueIdOverride(QString uniqueId)
+{
+    m_UniqueIdOverride = std::move(uniqueId);
 }
 
 NvAddress NvHTTP::address()
@@ -493,7 +500,10 @@ NvHTTP::openConnection(QUrl baseUrl,
     url.setPath("/" + command);
 
     // Use a placeholder UID for GFE allow them to quit games for each other.
-    url.setQuery("uniqueid=" + (m_UseTrueUid ? IdentityManager::get()->getUniqueId() : "0123456789ABCDEF") +
+    const QString uniqueId = !m_UniqueIdOverride.isEmpty()
+            ? m_UniqueIdOverride
+            : (m_UseTrueUid ? IdentityManager::get()->getUniqueId() : "0123456789ABCDEF");
+    url.setQuery("uniqueid=" + uniqueId +
                  "&uuid=" + QUuid::createUuid().toRfc4122().toHex() +
                  ((arguments != nullptr) ? ("&" + arguments) : ""));
 

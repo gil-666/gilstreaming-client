@@ -145,6 +145,7 @@ public:
     void setAddress(NvAddress address);
     void setHttpsPort(uint16_t port);
     void setTrueUid(bool useTrueUid);
+    void setUniqueIdOverride(QString uniqueId);
 
     NvAddress address();
 
@@ -198,5 +199,6 @@ private:
     NvAddress m_Address;
     QNetworkAccessManager* m_Nam;
     QSslCertificate m_ServerCert;
+    QString m_UniqueIdOverride;
     bool m_UseTrueUid;
 };

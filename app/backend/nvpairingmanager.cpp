@@ -1,7 +1,10 @@
 #include "nvpairingmanager.h"
 #include "utils.h"
 
+#include <QUuid>
+
 #include <stdexcept>
+#include <utility>
 
 #include <openssl/bio.h>
 #include <openssl/rand.h>
@@ -230,12 +233,31 @@ NvPairingManager::pair(QString appVersion, QString pin, QSslCertificate& serverC
     QByteArray aesKey = QCryptographicHash::hash(saltedPin, hashAlgo).constData();
     aesKey.truncate(16);
 
-    QString getCert = m_Http.openConnectionToString(m_Http.m_BaseUrlHttp,
+    QString getCert;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        try {
+            getCert = m_Http.openConnectionToString(m_Http.m_BaseUrlHttp,
                                                     "pair",
                                                     "devicename=roth&updateState=1&phrase=getservercert&salt=" +
                                                     salt.toHex() + "&clientcert=" + IdentityManager::get()->getCertificate().toHex(),
                                                     0);
-    NvHTTP::verifyResponseStatus(getCert);
+            NvHTTP::verifyResponseStatus(getCert);
+            break;
+        }
+        catch (const GfeHttpResponseException& e) {
+            if (e.getStatusCode() != 409 || attempt != 0) {
+                throw;
+            }
+
+            // Sunshine retains interrupted pairing sessions for several minutes,
+            // keyed by the client's unique ID. Use a temporary ID for this pairing
+            // transaction so reconnecting does not require clearing hosts or
+            // restarting Sunshine. The client certificate remains unchanged.
+            const QString temporaryUniqueId = QUuid::createUuid().toRfc4122().toHex();
+            qWarning() << "Pairing unique ID is already in use; retrying with a temporary ID";
+            m_Http.setUniqueIdOverride(temporaryUniqueId);
+        }
+    }
     if (NvHTTP::getXmlString(getCert, "paired") != "1")
     {
         qCritical() << "Failed pairing at stage #1";
