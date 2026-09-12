@@ -237,18 +237,11 @@ void RelayBridge::openTcpTunnel(TcpEndpoint* endpoint, QTcpSocket* localSocket)
     });
     connect(tunnel->websocket, &QWebSocket::disconnected, tunnel,
             [this, tunnel]() { closeTcpTunnel(tunnel); });
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    connect(tunnel->websocket, &QWebSocket::errorOccurred, tunnel,
-            [tunnel](QAbstractSocket::SocketError) {
-        qWarning() << "Relay TCP WebSocket error:" << tunnel->websocket->errorString();
-    });
-#else
     connect(tunnel->websocket,
             QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error), tunnel,
             [tunnel](QAbstractSocket::SocketError) {
         qWarning() << "Relay TCP WebSocket error:" << tunnel->websocket->errorString();
     });
-#endif
     tunnel->websocket->open(relayRequest("tcp", endpoint->offset));
 }
 
@@ -294,16 +287,9 @@ void RelayBridge::openUdpTunnel(UdpEndpoint* endpoint)
             QTimer::singleShot(500, endpoint, [this, endpoint]() { openUdpTunnel(endpoint); });
         }
     });
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
-    connect(websocket, &QWebSocket::errorOccurred, endpoint,
-            [websocket](QAbstractSocket::SocketError) {
-        qWarning() << "Relay UDP WebSocket error:" << websocket->errorString();
-    });
-#else
     connect(websocket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error), endpoint,
             [websocket](QAbstractSocket::SocketError) {
         qWarning() << "Relay UDP WebSocket error:" << websocket->errorString();
     });
-#endif
     websocket->open(relayRequest("udp", endpoint->offset));
 }
