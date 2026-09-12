@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QTimer>
 #include <QUrl>
 
 class QNetworkRequest;
@@ -33,6 +34,7 @@ private:
     QList<TcpTunnel*> m_TcpTunnels;
     QList<UdpEndpoint*> m_UdpEndpoints;
     QUrl m_RelayUrl;
+    QTimer m_KeepaliveTimer;
     QString m_AccessToken;
     QString m_LeaseId;
     bool m_Running;

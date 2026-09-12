@@ -60,6 +60,15 @@ public:
 RelayBridge::RelayBridge(QObject* parent)
     : QObject(parent), m_Running(false)
 {
+    m_KeepaliveTimer.setInterval(20000);
+    connect(&m_KeepaliveTimer, &QTimer::timeout, this, [this]() {
+        const QList<QWebSocket*> sockets = findChildren<QWebSocket*>();
+        for (QWebSocket* socket : sockets) {
+            if (socket->state() == QAbstractSocket::ConnectedState) {
+                socket->ping();
+            }
+        }
+    });
 }
 
 RelayBridge::~RelayBridge()
@@ -145,12 +154,14 @@ bool RelayBridge::start(const QUrl& relayUrl, const QString& accessToken,
     }
 
     qInfo() << "Local Sunshine relay bridge listening on 127.0.0.1 with base port" << basePort;
+    m_KeepaliveTimer.start();
     return true;
 }
 
 void RelayBridge::stop()
 {
     m_Running = false;
+    m_KeepaliveTimer.stop();
 
     const QList<TcpTunnel*> tunnels = m_TcpTunnels;
     for (TcpTunnel* tunnel : tunnels) {
