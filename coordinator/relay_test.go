@@ -33,7 +33,7 @@ func TestTCPRelayForAssignedVM(t *testing.T) {
 		}
 	}()
 
-	server, token, leaseID := testRelayServer(t, "127.0.0.1", listener.Addr().(*net.TCPAddr).Port)
+	server, token, leaseID, relayDone := testRelayServer(t, "127.0.0.1", listener.Addr().(*net.TCPAddr).Port)
 	defer server.Close()
 	connection := dialTestRelay(t, server.URL, token, leaseID, "tcp", 0)
 	defer connection.Close()
@@ -53,9 +53,40 @@ func TestTCPRelayForAssignedVM(t *testing.T) {
 	// The upstream closes after its response, like Sunshine does for each RTSP
 	// transaction. The WebSocket must preserve that as an orderly EOF after the
 	// response rather than abruptly resetting the client-side loopback socket.
-	_, _, err = connection.ReadMessage()
+	closeSeen := make(chan struct{}, 1)
+	allowCloseAck := make(chan struct{})
+	connection.SetCloseHandler(func(code int, text string) error {
+		closeSeen <- struct{}{}
+		<-allowCloseAck
+		return connection.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(code, "ack"), time.Now().Add(time.Second))
+	})
+	readDone := make(chan error, 1)
+	go func() {
+		_, _, readErr := connection.ReadMessage()
+		readDone <- readErr
+	}()
+
+	select {
+	case <-closeSeen:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for relay close frame")
+	}
+	select {
+	case <-relayDone:
+		t.Fatal("relay handler closed the transport before receiving the close acknowledgement")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(allowCloseAck)
+
+	err = <-readDone
 	if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
 		t.Fatalf("expected normal relay close after upstream EOF, got %v", err)
+	}
+	select {
+	case <-relayDone:
+	case <-time.After(time.Second):
+		t.Fatal("relay handler did not finish after receiving the close acknowledgement")
 	}
 }
 
@@ -74,7 +105,7 @@ func TestUDPRelayPreservesDatagrams(t *testing.T) {
 	}()
 
 	basePort := upstream.LocalAddr().(*net.UDPAddr).Port - 9
-	server, token, leaseID := testRelayServer(t, "127.0.0.1", basePort)
+	server, token, leaseID, _ := testRelayServer(t, "127.0.0.1", basePort)
 	defer server.Close()
 	connection := dialTestRelay(t, server.URL, token, leaseID, "udp", 9)
 	defer connection.Close()
@@ -93,7 +124,7 @@ func TestUDPRelayPreservesDatagrams(t *testing.T) {
 }
 
 func TestRelayRejectsUnauthorizedAndUnapprovedChannels(t *testing.T) {
-	server, token, leaseID := testRelayServer(t, "127.0.0.1", 47989)
+	server, token, leaseID, _ := testRelayServer(t, "127.0.0.1", 47989)
 	defer server.Close()
 
 	websocketURL := strings.Replace(server.URL, "http://", "ws://", 1) +
@@ -114,7 +145,7 @@ func TestRelayRejectsUnauthorizedAndUnapprovedChannels(t *testing.T) {
 	response.Body.Close()
 }
 
-func testRelayServer(t *testing.T, address string, basePort int) (*httptest.Server, string, string) {
+func testRelayServer(t *testing.T, address string, basePort int) (*httptest.Server, string, string, <-chan struct{}) {
 	t.Helper()
 	store := NewStore([]VM{{
 		ID: "vm-1", DisplayName: "Relay VM", StreamAddress: address,
@@ -128,7 +159,12 @@ func testRelayServer(t *testing.T, address string, basePort int) (*httptest.Serv
 	server := newServer(store, broker)
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/auth/dev", broker.DevLogin)
-	mux.HandleFunc("GET /v1/relay", server.auth(server.relay))
+	relayDone := make(chan struct{}, 8)
+	relayHandler := server.auth(server.relay)
+	mux.HandleFunc("GET /v1/relay", func(w http.ResponseWriter, r *http.Request) {
+		relayHandler(w, r)
+		relayDone <- struct{}{}
+	})
 	testServer := httptest.NewServer(mux)
 	token := developmentToken(t, mux, "relay-device")
 	owner := broker.AuthenticateToken(token)
@@ -136,7 +172,7 @@ func testRelayServer(t *testing.T, address string, basePort int) (*httptest.Serv
 	if err != nil {
 		t.Fatal(err)
 	}
-	return testServer, token, lease.ID
+	return testServer, token, lease.ID, relayDone
 }
 
 func dialTestRelay(t *testing.T, serverURL, token, leaseID, transport string, offset int) *websocket.Conn {

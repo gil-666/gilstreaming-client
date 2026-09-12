@@ -17,6 +17,7 @@ const (
 	relayDialTimeout     = 5 * time.Second
 	relayLeaseCheckEvery = 10 * time.Second
 	relayWriteTimeout    = 15 * time.Second
+	relayCloseWait       = 2 * time.Second
 	relayMaxMessageSize  = 1024 * 1024
 )
 
@@ -98,14 +99,6 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, owner string) {
 		relayErr = relayUDP(client, upstream)
 	}
 	close(done)
-	if errors.Is(relayErr, io.EOF) {
-		// Preserve an orderly upstream EOF across the WebSocket tunnel. The
-		// client uses this to gracefully close its loopback TCP socket after all
-		// response bytes have been delivered (required by Sunshine's RTSP flow).
-		_ = client.WriteControl(websocket.CloseMessage,
-			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "upstream closed"),
-			time.Now().Add(time.Second))
-	}
 	client.Close()
 	upstream.Close()
 	log.Printf("VM relay closed lease=%s vm=%s transport=%s offset=%d duration=%s reason=%v",
@@ -143,20 +136,25 @@ func (s *Server) watchRelayLease(done <-chan struct{}, client *websocket.Conn, u
 	}
 }
 
+type tcpRelayResult struct {
+	err      error
+	upstream bool
+}
+
 func relayTCP(client *websocket.Conn, upstream net.Conn) error {
-	errorsDone := make(chan error, 2)
+	results := make(chan tcpRelayResult, 2)
 	go func() {
 		for {
 			messageType, payload, err := client.ReadMessage()
 			if err != nil {
-				errorsDone <- err
+				results <- tcpRelayResult{err: err}
 				return
 			}
 			if messageType != websocket.BinaryMessage {
 				continue
 			}
 			if err := writeAll(upstream, payload); err != nil {
-				errorsDone <- err
+				results <- tcpRelayResult{err: err}
 				return
 			}
 		}
@@ -168,17 +166,39 @@ func relayTCP(client *websocket.Conn, upstream net.Conn) error {
 			if count > 0 {
 				_ = client.SetWriteDeadline(time.Now().Add(relayWriteTimeout))
 				if writeErr := client.WriteMessage(websocket.BinaryMessage, buffer[:count]); writeErr != nil {
-					errorsDone <- writeErr
+					results <- tcpRelayResult{err: writeErr, upstream: true}
 					return
 				}
 			}
 			if err != nil {
-				errorsDone <- err
+				results <- tcpRelayResult{err: err, upstream: true}
 				return
 			}
 		}
 	}()
-	return <-errorsDone
+
+	result := <-results
+	if result.upstream && errors.Is(result.err, io.EOF) {
+		// A Close frame is ordered after all preceding binary frames. Wait for
+		// the peer's close acknowledgement before the handler closes the TLS
+		// socket, otherwise Schannel can discard the tail of Sunshine's RTSP
+		// response and Moonlight times out waiting for ANNOUNCE.
+		if err := client.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "upstream closed"),
+			time.Now().Add(time.Second)); err != nil {
+			return fmt.Errorf("send relay close: %w", err)
+		}
+
+		timer := time.NewTimer(relayCloseWait)
+		select {
+		case <-results:
+			if !timer.Stop() {
+				<-timer.C
+			}
+		case <-timer.C:
+		}
+	}
+	return result.err
 }
 
 func relayUDP(client *websocket.Conn, upstream net.Conn) error {
