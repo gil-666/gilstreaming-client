@@ -236,7 +236,7 @@ func (s *Server) pairLease(w http.ResponseWriter, r *http.Request, owner string)
 			return
 		}
 	}
-	_, vm, err := s.store.LeaseVM(r.PathValue("leaseId"), owner)
+	lease, vm, err := s.store.LeaseVM(r.PathValue("leaseId"), owner)
 	if errors.Is(err, errLeaseNotFound) {
 		writeError(w, http.StatusGone, "LEASE_EXPIRED", "lease is missing or expired")
 		return
@@ -249,7 +249,12 @@ func (s *Server) pairLease(w http.ResponseWriter, r *http.Request, owner string)
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not load lease")
 		return
 	}
-	if err := s.pairer.Pair(r.Context(), vm, request.PIN, request.DeviceName); err != nil {
+	// Use a stable, coordinator-specific Sunshine name so the same device can
+	// safely replace its old certificate record when it needs to pair again.
+	// The client-provided hostname is included only to clean up records created
+	// by older GilStreaming coordinator versions.
+	pairingName := "GilStreaming-" + lease.DeviceID
+	if err := s.pairer.Pair(r.Context(), vm, request.PIN, pairingName, request.DeviceName); err != nil {
 		log.Printf("automatic pairing failed for VM %s: %v", vm.ID, err)
 		writeError(w, http.StatusBadGateway, "PAIRING_FAILED", err.Error())
 		return

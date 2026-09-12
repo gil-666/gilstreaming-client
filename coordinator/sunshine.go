@@ -34,7 +34,7 @@ func NewSunshinePairer() *SunshinePairer {
 	}
 }
 
-func (p *SunshinePairer) Pair(ctx context.Context, vm VM, pin, deviceName string) error {
+func (p *SunshinePairer) Pair(ctx context.Context, vm VM, pin, deviceName string, legacyDeviceNames ...string) error {
 	const usernameEnv = "SUNSHINE_USERNAME"
 	const passwordEnv = "SUNSHINE_PASSWORD"
 	username, password := os.Getenv(usernameEnv), os.Getenv(passwordEnv)
@@ -50,6 +50,10 @@ func (p *SunshinePairer) Pair(ctx context.Context, vm VM, pin, deviceName string
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
 		return fmt.Errorf("invalid Sunshine API URL %q", baseURL)
 	}
+	if err := p.removeStaleClients(ctx, parsed, username, password,
+		append([]string{deviceName}, legacyDeviceNames...)...); err != nil {
+		return fmt.Errorf("remove stale Sunshine clients: %w", err)
+	}
 
 	deadline := p.now().Add(8 * time.Second)
 	for {
@@ -63,6 +67,130 @@ func (p *SunshinePairer) Pair(ctx context.Context, vm VM, pin, deviceName string
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
+}
+
+type sunshineClient struct {
+	Name string `json:"name"`
+	UUID string `json:"uuid"`
+}
+
+func (p *SunshinePairer) removeStaleClients(ctx context.Context, baseURL *url.URL, username, password string, names ...string) error {
+	wanted := make(map[string]bool, len(names))
+	for _, name := range names {
+		if name != "" {
+			wanted[name] = true
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		sunshineEndpoint(baseURL, "/api/clients/list"), nil)
+	if err != nil {
+		return err
+	}
+	request.SetBasicAuth(username, password)
+	request.Header.Set("Accept", "application/json")
+	response, err := p.client.Do(request)
+	if err != nil {
+		return fmt.Errorf("list Sunshine clients: %w", err)
+	}
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	response.Body.Close()
+	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed {
+		// Older Sunshine releases do not expose paired-client management.
+		return nil
+	}
+	if response.StatusCode == http.StatusUnauthorized {
+		return errors.New("Sunshine rejected its Web UI credentials")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("list Sunshine clients returned HTTP %d", response.StatusCode)
+	}
+	var clients struct {
+		NamedCerts []sunshineClient `json:"named_certs"`
+	}
+	if err := json.Unmarshal(body, &clients); err != nil {
+		return fmt.Errorf("decode Sunshine clients: %w", err)
+	}
+
+	var stale []sunshineClient
+	for _, client := range clients.NamedCerts {
+		if wanted[client.Name] && client.UUID != "" {
+			stale = append(stale, client)
+		}
+	}
+	if len(stale) == 0 {
+		return nil
+	}
+
+	csrfToken, err := p.sunshineCSRFToken(ctx, baseURL, username, password)
+	if err != nil {
+		return err
+	}
+	for _, client := range stale {
+		payload, _ := json.Marshal(map[string]string{"uuid": client.UUID})
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			sunshineEndpoint(baseURL, "/api/clients/unpair"), bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		request.SetBasicAuth(username, password)
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Accept", "application/json")
+		if csrfToken != "" {
+			request.Header.Set("X-CSRF-Token", csrfToken)
+		}
+		response, err := p.client.Do(request)
+		if err != nil {
+			return fmt.Errorf("unpair stale Sunshine client %s: %w", client.UUID, err)
+		}
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+		response.Body.Close()
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return fmt.Errorf("unpair stale Sunshine client %s returned HTTP %d: %s",
+				client.UUID, response.StatusCode, strings.TrimSpace(string(body)))
+		}
+		var result struct {
+			Status any `json:"status"`
+		}
+		if json.Unmarshal(body, &result) != nil || (result.Status != true && result.Status != "true") {
+			return fmt.Errorf("Sunshine did not remove stale client %s", client.UUID)
+		}
+	}
+	return nil
+}
+
+func (p *SunshinePairer) sunshineCSRFToken(ctx context.Context, baseURL *url.URL, username, password string) (string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		sunshineEndpoint(baseURL, "/api/csrf-token"), nil)
+	if err != nil {
+		return "", err
+	}
+	request.SetBasicAuth(username, password)
+	request.Header.Set("Accept", "application/json")
+	response, err := p.client.Do(request)
+	if err != nil {
+		return "", fmt.Errorf("get Sunshine CSRF token: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed {
+		return "", nil
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return "", fmt.Errorf("get Sunshine CSRF token returned HTTP %d", response.StatusCode)
+	}
+	var result struct {
+		Token string `json:"csrf_token"`
+	}
+	if err := json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&result); err != nil {
+		return "", fmt.Errorf("decode Sunshine CSRF token: %w", err)
+	}
+	if result.Token == "" {
+		return "", errors.New("Sunshine returned an empty CSRF token")
+	}
+	return result.Token, nil
 }
 
 func (p *SunshinePairer) CloseApp(ctx context.Context, vm VM) error {
