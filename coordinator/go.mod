@@ -2,7 +2,10 @@ module gilstreaming/coordinator
 
 go 1.22
 
-require github.com/grandcat/zeroconf v1.0.0
+require (
+	github.com/gorilla/websocket v1.5.3
+	github.com/grandcat/zeroconf v1.0.0
+)
 
 require (
 	github.com/cenkalti/backoff v2.2.1+incompatible // indirect

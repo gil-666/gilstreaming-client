@@ -73,10 +73,18 @@ $env:GILSTREAMING_COORDINATOR_URL = "http://127.0.0.1:6766"
 Production clients default to `https://gilstreaming.gilservers.com`.
 
 The private coordinator-side endpoints and Sunshine base port are populated by
-mDNS. `publicAddress` is returned to clients with the discovered base port. For
-this deployment it is `stream.gilservers.com`; Sunshine advertises and publishes
-port `47989`. The DNS record must resolve directly to the router's public IP.
-Do not publish Sunshine's Web UI port (`47990`).
+mDNS. Public clients receive an authenticated `wss://` relay endpoint on the
+coordinator hostname. The desktop binds Sunshine's port family on loopback and
+the coordinator translates those connections to only the VM owned by the
+caller's active lease. `publicAddress` remains available for compatibility, but
+the GilStreaming desktop does not require the router's Sunshine ports to be
+reachable. Do not publish Sunshine's Web UI port (`47990`).
+
+The reverse proxy in front of the coordinator must pass the `Upgrade` and
+`Connection` headers and use long read/send timeouts for `/v1/relay`. The relay
+accepts only native clients without a browser `Origin`, requires the normal
+bearer token plus lease ID, and allows only the fixed Sunshine streaming port
+offsets.
 
 Run tests with `go test ./...`.
 

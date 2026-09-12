@@ -26,9 +26,11 @@ See [docs/architecture.md](docs/architecture.md) and
 [docs/coordinator-api.md](docs/coordinator-api.md) for the initial design.
 
 For public streaming, the coordinator endpoint is
-`https://gilstreaming.gilservers.com`, while clients connect directly to
-`stream.gilservers.com` on the UPnP-published Sunshine port. Private discovered
-VM addresses and the Sunshine Web UI remain coordinator-only.
+`https://gilstreaming.gilservers.com`. The desktop uses authenticated WebSocket
+relay channels on that same HTTPS hostname, allowing GameStream traffic to work
+on networks that block Sunshine's public ports. Private VM addresses, lease
+routing, and the Sunshine Web UI remain coordinator-only. The LAN coordinator
+setting continues to connect directly for local testing.
 
 ## Portable build and run scripts
 
@@ -97,7 +99,7 @@ when that build is newer.
 - The application identity has been separated from Moonlight so settings and
   paired-host state are stored under GilStreaming.
 - A Go coordinator provides brokered GILid authentication, Sunshine mDNS IP
-  discovery, and persistent atomic VM leases with heartbeats and expiry.
+  discovery, persistent atomic VM leases, and authenticated WSS stream relays.
 - The desktop has a GILid login screen, a debug-only login skip, coordinator VM
   assignment, lease heartbeats, and coordinator-only host entry.
 - Automatic Sunshine pairing is implemented; VM health/cleanup is the next
@@ -158,7 +160,7 @@ Hosting for Moonlight's Debian and L4T package repositories is graciously provid
 * Install the required packages:
   * Debian/Ubuntu:
     * Base Requirements: `libegl1-mesa-dev libgl1-mesa-dev libopus-dev libsdl2-dev libsdl2-ttf-dev libssl-dev libavcodec-dev libavformat-dev libswscale-dev libva-dev libvdpau-dev libxkbcommon-dev wayland-protocols libdrm-dev`
-    * Qt 6 (Recommended): `qt6-base-dev qt6-declarative-dev libqt6svg6-dev qt6-wayland qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtquick-layouts qml6-module-qtqml-workerscript qml6-module-qtquick-window qml6-module-qtquick`
+    * Qt 6 (Recommended): `qt6-base-dev qt6-declarative-dev libqt6svg6-dev qt6-websockets-dev qt6-wayland qml6-module-qtquick-controls qml6-module-qtquick-templates qml6-module-qtquick-layouts qml6-module-qtqml-workerscript qml6-module-qtquick-window qml6-module-qtquick`
     * Qt 5: `qtbase5-dev qt5-qmake qtdeclarative5-dev qtquickcontrols2-5-dev qml-module-qtquick-controls2 qml-module-qtquick-layouts qml-module-qtquick-window2 qml-module-qtquick2 qtwayland5`
   * RedHat/Fedora (RPM Fusion repo required):
     * Base Requirements: `openssl-devel SDL2-devel SDL2_ttf-devel ffmpeg-devel libva-devel libvdpau-devel opus-devel pulseaudio-libs-devel alsa-lib-devel libdrm-devel`

@@ -77,6 +77,8 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/v1/leases",
 		strings.NewReader(`{"deviceId":"public-device","deviceName":"Remote"}`))
 	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("X-Forwarded-Proto", "https")
+	request.Host = "gilstreaming.gilservers.com"
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)
 
@@ -85,12 +87,19 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 			Address string `json:"address"`
 			Port    int    `json:"port"`
 		} `json:"host"`
+		Relay struct {
+			URL      string `json:"url"`
+			BasePort int    `json:"basePort"`
+		} `json:"relay"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&assigned); err != nil {
 		t.Fatal(err)
 	}
 	if assigned.Host.Address != "stream.gilservers.com" || assigned.Host.Port != 47989 {
 		t.Fatalf("unexpected public endpoint: %#v", assigned.Host)
+	}
+	if assigned.Relay.URL != "wss://gilstreaming.gilservers.com/v1/relay" || assigned.Relay.BasePort != 47989 {
+		t.Fatalf("unexpected relay endpoint: %#v", assigned.Relay)
 	}
 }
 
@@ -113,6 +122,7 @@ func TestLeaseReturnsPrivateEndpointForLANCoordinator(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "http://192.168.1.209:6766/v1/leases",
 		strings.NewReader(`{"deviceId":"lan-device","deviceName":"LAN Client"}`))
 	request.Header.Set("Authorization", "Bearer "+token)
+	request.Header.Set("X-GilStreaming-LAN", "1")
 	response := httptest.NewRecorder()
 	mux.ServeHTTP(response, request)
 
@@ -121,12 +131,16 @@ func TestLeaseReturnsPrivateEndpointForLANCoordinator(t *testing.T) {
 			Address string `json:"address"`
 			Port    int    `json:"port"`
 		} `json:"host"`
+		Relay json.RawMessage `json:"relay"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&assigned); err != nil {
 		t.Fatal(err)
 	}
 	if assigned.Host.Address != "192.168.1.23" || assigned.Host.Port != 47989 {
 		t.Fatalf("unexpected LAN endpoint: %#v", assigned.Host)
+	}
+	if len(assigned.Relay) != 0 {
+		t.Fatalf("LAN assignment unexpectedly included a relay: %s", assigned.Relay)
 	}
 }
 

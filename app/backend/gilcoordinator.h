@@ -6,6 +6,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include "relaybridge.h"
+
 class QNetworkReply;
 class QJsonObject;
 
@@ -73,6 +75,7 @@ private:
     void fail(QString message);
 
     QNetworkAccessManager m_Network;
+    RelayBridge m_RelayBridge;
     QTimer m_LoginPollTimer;
     QTimer m_HeartbeatTimer;
     QUrl m_BaseUrl;

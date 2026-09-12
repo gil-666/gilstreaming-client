@@ -207,6 +207,7 @@ void GilCoordinator::requestVm()
             const QString code = response.value("code").toString();
             const int statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
             if (statusCode == 401) {
+                m_RelayBridge.stop();
                 clearSession();
                 fail(tr("Your saved GILid session expired. Please sign in again."));
                 emit assignmentRevoked();
@@ -221,6 +222,7 @@ void GilCoordinator::requestVm()
         }
 
         const QJsonObject host = response.value("host").toObject();
+        const QJsonObject relay = response.value("relay").toObject();
         m_LeaseId = response.value("leaseId").toString();
         const QString address = host.value("address").toString();
         const int port = host.value("port").toInt();
@@ -230,10 +232,29 @@ void GilCoordinator::requestVm()
             return;
         }
 
+        QString connectionAddress = address;
+        int connectionPort = port;
+        if (!m_UseLanCoordinator && !relay.isEmpty()) {
+            QString relayError;
+            const QUrl relayUrl(relay.value("url").toString());
+            const int relayBasePort = relay.value("basePort").toInt();
+            if (!m_RelayBridge.start(relayUrl, m_AccessToken, m_LeaseId,
+                                     relayBasePort, &relayError)) {
+                fail(relayError);
+                reply->deleteLater();
+                return;
+            }
+            connectionAddress = "127.0.0.1";
+            connectionPort = relayBasePort;
+        }
+        else {
+            m_RelayBridge.stop();
+        }
+
         setBusy(false);
-        setStatus(tr("Connecting to %1…").arg(host.value("name").toString(address)));
+        setStatus(tr("Connecting securely to %1…").arg(host.value("name").toString(address)));
         m_HeartbeatTimer.start();
-        emit assignedHost(address, port);
+        emit assignedHost(connectionAddress, connectionPort);
         reply->deleteLater();
     });
 }
@@ -256,6 +277,7 @@ void GilCoordinator::sendHeartbeat()
                 setStatus(tr("The VM reservation was lost. Return to login and try again."));
             }
             m_LeaseId.clear();
+            m_RelayBridge.stop();
             emit assignmentRevoked();
         }
         reply->deleteLater();
@@ -302,6 +324,7 @@ void GilCoordinator::releaseLease()
     connect(reply, &QNetworkReply::finished, reply, &QObject::deleteLater);
     m_LeaseId.clear();
     m_HeartbeatTimer.stop();
+    m_RelayBridge.stop();
     if (!m_Quitting) {
         emit assignmentRevoked();
     }
@@ -328,6 +351,7 @@ void GilCoordinator::logout()
 
     m_LeaseId.clear();
     m_HeartbeatTimer.stop();
+    m_RelayBridge.stop();
     clearSession();
     setBusy(false);
     setStatus(tr("Sign in to request a gaming VM."));
@@ -343,6 +367,7 @@ void GilCoordinator::setUseLanCoordinator(bool enabled)
     m_LoginPollTimer.stop();
     m_LoginRequestId.clear();
     m_HeartbeatTimer.stop();
+    m_RelayBridge.stop();
 
     // Prevent callbacks from requests against the previous endpoint from
     // changing the freshly reset UI or its next lease.

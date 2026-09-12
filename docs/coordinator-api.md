@@ -42,9 +42,27 @@ The operation is idempotent for a user/device with an active lease. Success:
     "address": "vm1.gilstreaming.internal",
     "port": 47989
   },
+  "relay": {
+    "url": "wss://gilstreaming.gilservers.com/v1/relay",
+    "basePort": 47989
+  },
   "pairingRequired": true
 }
 ```
+
+Public clients use `relay.url` and bind the returned Sunshine `basePort` family
+on loopback. LAN requests marked with `X-GilStreaming-LAN: 1` omit the relay and
+use `host` directly.
+
+## Relay a Sunshine channel
+
+`GET /v1/relay?leaseId={leaseId}&transport={tcp|udp}&offset={portOffset}`
+
+This endpoint upgrades to a WebSocket. It requires the coordinator bearer token
+in `Authorization`, validates that the lease belongs to that user, and maps the
+approved offset onto the assigned VM's discovered Sunshine base port. Each
+binary WebSocket message is a TCP byte chunk or one UDP datagram. Browser
+origins and ports outside the Sunshine allowlist are rejected.
 
 If both VMs are busy, return `409` with `code: "POOL_EXHAUSTED"` and a retry
 hint. Never return the full VM inventory to a client.

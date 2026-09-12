@@ -1,4 +1,4 @@
-QT += core quick network quickcontrols2 svg
+QT += core quick network quickcontrols2 svg websockets
 CONFIG += c++17
 
 unix:!macx {
@@ -172,6 +172,7 @@ SOURCES += \
     main.cpp \
     backend/computerseeker.cpp \
     backend/gilcoordinator.cpp \
+    backend/relaybridge.cpp \
     backend/identitymanager.cpp \
     backend/nvcomputer.cpp \
     backend/nvhttp.cpp \
@@ -217,6 +218,7 @@ HEADERS += \
     utils.h \
     backend/computerseeker.h \
     backend/gilcoordinator.h \
+    backend/relaybridge.h \
     backend/identitymanager.h \
     backend/nvcomputer.h \
     backend/nvhttp.h \

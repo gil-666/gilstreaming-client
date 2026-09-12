@@ -9,14 +9,17 @@ Sunshine and can serve one interactive user at a time. The coordinator is the
 authority for VM assignment.
 
 ```text
-GilStreaming client ──HTTPS──> Coordinator
-        │                            │
-        └── GameStream ──────────────└── health/pairing ──> Sunshine VM(s)
+GilStreaming client ──HTTPS/WSS──> Cloudflare/reverse proxy ──> Coordinator
+                                                                  │
+                                     authenticated relay channels ├──> assigned Sunshine VM
+                                               health and pairing ┘
 ```
 
-The streaming path goes directly from the client to its assigned VM. The
-coordinator handles authentication and control only; proxying video through it
-would add latency and bandwidth cost.
+Public clients carry Sunshine TCP streams and UDP datagrams through separate
+authenticated WebSocket channels. Separate channels prevent a delayed video
+packet from blocking audio or control traffic. The coordinator translates only
+the fixed Sunshine port offsets to the private VM attached to the caller's
+lease. LAN mode bypasses the relay and connects directly.
 
 ## Session state machine
 
@@ -89,7 +92,7 @@ possible. Never expose Sunshine's admin UI to the public Internet.
 
 - Authenticate every lease request.
 - Store only hashed access tokens in the coordinator database.
-- Encrypt coordinator traffic with TLS.
+- Encrypt coordinator and relay traffic with TLS.
 - Keep Sunshine admin credentials in coordinator secrets.
 - Restrict each VM's Sunshine and admin ports to the overlay/coordinator ACLs.
 - Rate-limit sign-in, lease, and pairing endpoints.

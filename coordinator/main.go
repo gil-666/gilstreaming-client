@@ -74,6 +74,7 @@ func main() {
 	mux.HandleFunc("GET /auth/callback", server.oauthCallback)
 	mux.HandleFunc("POST /v1/auth/dev", server.authBroker.DevLogin)
 	mux.HandleFunc("POST /v1/leases", server.auth(server.createLease))
+	mux.HandleFunc("GET /v1/relay", server.auth(server.relay))
 	mux.HandleFunc("POST /v1/leases/{leaseId}/pair", server.auth(server.pairLease))
 	mux.HandleFunc("POST /v1/leases/{leaseId}/heartbeat", server.auth(server.heartbeat))
 	mux.HandleFunc("DELETE /v1/leases/{leaseId}", server.auth(server.release))
@@ -92,9 +93,11 @@ func main() {
 		Addr:              config.Listen,
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		// Streaming relay connections are long-lived WebSocket upgrades. Per-request
+		// limits remain in the handlers, while ReadHeaderTimeout protects handshakes.
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		IdleTimeout:  60 * time.Second,
 	}
 	log.Printf("GilStreaming coordinator listening on %s", config.Listen)
 	log.Fatal(httpServer.ListenAndServe())
@@ -183,11 +186,25 @@ func (s *Server) createLease(w http.ResponseWriter, r *http.Request, owner strin
 		return
 	}
 	clientAddress, clientPort := endpointForRequest(vm, r)
-	writeJSON(w, http.StatusCreated, map[string]any{
+	response := map[string]any{
 		"leaseId": lease.ID, "state": "reserved", "expiresAt": lease.ExpiresAt,
 		"host":            map[string]any{"name": vm.DisplayName, "address": clientAddress, "port": clientPort},
 		"pairingRequired": true,
-	})
+	}
+	if r.Header.Get("X-GilStreaming-LAN") != "1" {
+		response["relay"] = map[string]any{
+			"url": relayURLForRequest(r), "basePort": vm.StreamPort,
+		}
+	}
+	writeJSON(w, http.StatusCreated, response)
+}
+
+func relayURLForRequest(r *http.Request) string {
+	scheme := "wss"
+	if r.TLS == nil && !strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+		scheme = "ws"
+	}
+	return scheme + "://" + r.Host + "/v1/relay"
 }
 
 func endpointForRequest(vm VM, r *http.Request) (string, int) {
