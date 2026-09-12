@@ -131,6 +131,10 @@ ApplicationWindow {
         }
     }
 
+    AnimatedBackground {
+        anchors.fill: parent
+    }
+
     StackView {
         id: stackView
         anchors.fill: parent

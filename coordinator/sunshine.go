@@ -65,6 +65,52 @@ func (p *SunshinePairer) Pair(ctx context.Context, vm VM, pin, deviceName string
 	}
 }
 
+func (p *SunshinePairer) CloseApp(ctx context.Context, vm VM) error {
+	username, password := os.Getenv("SUNSHINE_USERNAME"), os.Getenv("SUNSHINE_PASSWORD")
+	if username == "" || password == "" {
+		return errSunshineCredentials
+	}
+	baseURL := vm.SunshineAPIURL
+	if baseURL == "" {
+		baseURL = fmt.Sprintf("https://%s:47990", vm.StreamAddress)
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return fmt.Errorf("invalid Sunshine API URL %q", baseURL)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		sunshineEndpoint(parsed, "/api/apps/close"), bytes.NewReader([]byte("{}")))
+	if err != nil {
+		return err
+	}
+	request.SetBasicAuth(username, password)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Accept", "application/json")
+	response, err := p.client.Do(request)
+	if err != nil {
+		return fmt.Errorf("contact Sunshine: %w", err)
+	}
+	defer response.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 1<<20))
+	if response.StatusCode == http.StatusUnauthorized {
+		return errors.New("Sunshine rejected its Web UI credentials")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("Sunshine close app returned HTTP %d: %s",
+			response.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if len(bytes.TrimSpace(body)) > 0 {
+		var result struct {
+			Status any `json:"status"`
+		}
+		if json.Unmarshal(body, &result) == nil && result.Status != nil &&
+			result.Status != true && result.Status != "true" {
+			return errors.New("Sunshine did not close the running application")
+		}
+	}
+	return nil
+}
+
 func (p *SunshinePairer) tryPair(ctx context.Context, baseURL *url.URL, username, password, pin, deviceName string) error {
 	pairingID, modernAPI, err := p.pendingPairingID(ctx, baseURL, username, password)
 	if err != nil {

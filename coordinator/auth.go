@@ -28,6 +28,7 @@ type gilIDProfile struct {
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
 	AvatarURL string `json:"avatar_url"`
+	IsAdmin   bool   `json:"is_admin"`
 }
 
 type pendingAuth struct {
@@ -43,6 +44,7 @@ type pendingAuth struct {
 
 type coordinatorSession struct {
 	Owner     string
+	Profile   gilIDProfile
 	ExpiresAt time.Time
 }
 
@@ -215,7 +217,8 @@ func (b *AuthBroker) Callback(w http.ResponseWriter, r *http.Request) {
 		current.AccessToken = coordinatorToken
 		current.Profile = profile
 		b.sessions[hex.EncodeToString(hash[:])] = coordinatorSession{
-			Owner: profile.ID, ExpiresAt: b.now().UTC().Add(coordinatorSessionLifetime),
+			Owner: profile.ID, Profile: profile,
+			ExpiresAt: b.now().UTC().Add(coordinatorSessionLifetime),
 		}
 	}
 	b.mu.Unlock()
@@ -243,13 +246,27 @@ func (b *AuthBroker) DevLogin(w http.ResponseWriter, r *http.Request) {
 	owner := "dev:" + request.DeviceID
 	b.mu.Lock()
 	b.sessions[hex.EncodeToString(hash[:])] = coordinatorSession{
-		Owner: owner, ExpiresAt: b.now().UTC().Add(coordinatorSessionLifetime),
+		Owner: owner, Profile: gilIDProfile{ID: owner, Username: "Developer"},
+		ExpiresAt: b.now().UTC().Add(coordinatorSessionLifetime),
 	}
 	b.mu.Unlock()
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"state": "authenticated", "accessToken": token,
 		"profile": gilIDProfile{ID: owner, Username: "Developer"},
 	})
+}
+
+func (b *AuthBroker) ProfileForOwner(owner string) (gilIDProfile, bool) {
+	now := b.now().UTC()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.cleanupLocked(now)
+	for _, session := range b.sessions {
+		if session.Owner == owner && session.ExpiresAt.After(now) {
+			return session.Profile, true
+		}
+	}
+	return gilIDProfile{}, false
 }
 
 func (b *AuthBroker) AuthenticateToken(token string) string {

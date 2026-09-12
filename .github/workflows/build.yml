@@ -184,7 +184,7 @@ jobs:
               version = $Env:CI_VERSION
               browser_url = "https://github.com/gil-666/gilstreaming-client/releases/download/continuous/GilStreamingSetup-x64.exe"
             }
-          ) | ConvertTo-Json -Depth 3 |
+          ) | ConvertTo-Json -Depth 3 -AsArray |
             Set-Content -LiteralPath (Join-Path $publishFolder "update.json") -Encoding utf8NoBOM
 
       - name: Upload Windows installer

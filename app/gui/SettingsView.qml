@@ -8,12 +8,27 @@ import ComputerManager 1.0
 import GilCoordinator 1.0
 import SdlGamepadKeyNavigation 1.0
 import SystemProperties 1.0
+import AutoUpdateChecker 1.0
 
 Flickable {
     id: settingsPage
     objectName: qsTr("Settings")
+    property string updateStatus: ""
+    property string updateDownloadUrl: ""
 
     signal languageChanged()
+
+    Connections {
+        target: AutoUpdateChecker
+
+        function onOnUpdateAvailable(version, url) {
+            settingsPage.updateDownloadUrl = url
+        }
+
+        function onOnUpdateCheckFinished(updateAvailable, message) {
+            settingsPage.updateStatus = message
+        }
+    }
 
     boundsBehavior: Flickable.OvershootBounds
 
@@ -1537,6 +1552,65 @@ Flickable {
                     ToolTip.timeout: 5000
                     ToolTip.visible: hovered
                     ToolTip.text: qsTr("Allows Moonlight to capture gamepad inputs even if it's not the current window in focus")
+                }
+            }
+        }
+
+        GroupBox {
+            id: updateSettingsGroupBox
+            width: (parent.width - (parent.leftPadding + parent.rightPadding))
+            padding: 12
+            title: "<font color=\"#d65abc\">" + qsTr("GilStreaming Updates") + "</font>"
+            font.pointSize: 12
+
+            Column {
+                width: parent.width
+                spacing: 8
+
+                Label {
+                    width: parent.width
+                    text: qsTr("Keep GilStreaming current with the latest successful GitHub Actions build.")
+                    color: window.appMutedText
+                    font.pointSize: 9
+                    wrapMode: Text.Wrap
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 8
+
+                    Button {
+                        id: checkForUpdatesButton
+                        text: AutoUpdateChecker.checking ? qsTr("Checking…") : qsTr("Check for updates")
+                        enabled: !AutoUpdateChecker.checking
+                        onClicked: {
+                            settingsPage.updateStatus = qsTr("Checking for updates…")
+                            settingsPage.updateDownloadUrl = ""
+                            AutoUpdateChecker.start()
+                        }
+                    }
+
+                    Button {
+                        text: qsTr("Download update")
+                        visible: settingsPage.updateDownloadUrl.length > 0 && SystemProperties.hasBrowser
+                        onClicked: Qt.openUrlExternally(settingsPage.updateDownloadUrl)
+                    }
+
+                    BusyIndicator {
+                        width: 34
+                        height: 34
+                        running: AutoUpdateChecker.checking
+                        visible: running
+                    }
+                }
+
+                Label {
+                    width: parent.width
+                    visible: text.length > 0
+                    text: settingsPage.updateStatus
+                    color: settingsPage.updateDownloadUrl.length > 0 ? window.brandAccentHover : window.appMutedText
+                    font.pointSize: 9
+                    wrapMode: Text.Wrap
                 }
             }
         }

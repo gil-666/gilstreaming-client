@@ -24,6 +24,7 @@ type Config struct {
 type Server struct {
 	store      *Store
 	authBroker *AuthBroker
+	adminAuth  *AdminAuth
 	pairer     *SunshinePairer
 	discovery  *SunshineDiscovery
 }
@@ -61,17 +62,30 @@ func main() {
 	}
 	server := newServer(store, authBroker)
 	server.discovery = discovery
+	if err := discovery.Refresh(context.Background(), store); err != nil {
+		log.Printf("initial Sunshine discovery failed; VMs will refresh on demand: %v", err)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", server.health)
 	mux.HandleFunc("POST /v1/auth/start", server.authBroker.Start)
 	mux.HandleFunc("GET /v1/auth/status/{requestId}", server.authBroker.Status)
-	mux.HandleFunc("GET /auth/callback", server.authBroker.Callback)
+	mux.HandleFunc("GET /auth/callback", server.oauthCallback)
 	mux.HandleFunc("POST /v1/auth/dev", server.authBroker.DevLogin)
 	mux.HandleFunc("POST /v1/leases", server.auth(server.createLease))
 	mux.HandleFunc("POST /v1/leases/{leaseId}/pair", server.auth(server.pairLease))
 	mux.HandleFunc("POST /v1/leases/{leaseId}/heartbeat", server.auth(server.heartbeat))
 	mux.HandleFunc("DELETE /v1/leases/{leaseId}", server.auth(server.release))
+	mux.HandleFunc("GET /admin", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin/", http.StatusPermanentRedirect)
+	})
+	mux.HandleFunc("GET /admin/login", server.adminAuth.Start)
+	mux.HandleFunc("GET /admin/assets/gilstreaming-logo.png", server.adminLogo)
+	mux.HandleFunc("GET /admin/", server.admin(server.adminPage))
+	mux.HandleFunc("GET /admin/api/status", server.admin(server.adminStatus))
+	mux.HandleFunc("POST /admin/api/leases", server.admin(server.adminAssign))
+	mux.HandleFunc("DELETE /admin/api/leases/{leaseId}", server.admin(server.adminKick))
+	mux.HandleFunc("POST /admin/logout", server.admin(server.adminAuth.Logout))
 
 	httpServer := &http.Server{
 		Addr:              config.Listen,
@@ -112,7 +126,14 @@ func loadConfig(path string) (Config, error) {
 }
 
 func newServer(store *Store, authBroker *AuthBroker) *Server {
-	return &Server{store: store, authBroker: authBroker, pairer: NewSunshinePairer()}
+	return &Server{store: store, authBroker: authBroker, adminAuth: NewAdminAuth(authBroker), pairer: NewSunshinePairer()}
+}
+
+func (s *Server) oauthCallback(w http.ResponseWriter, r *http.Request) {
+	if s.adminAuth.Callback(w, r) {
+		return
+	}
+	s.authBroker.Callback(w, r)
 }
 
 func (s *Server) auth(next func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
@@ -222,6 +243,11 @@ func (s *Server) pairLease(w http.ResponseWriter, r *http.Request, owner string)
 }
 
 func (s *Server) release(w http.ResponseWriter, r *http.Request, owner string) {
+	lease, _, lookupErr := s.store.LeaseVM(r.PathValue("leaseId"), owner)
+	if errors.Is(lookupErr, errLeaseForbidden) {
+		writeError(w, http.StatusForbidden, "FORBIDDEN", "lease belongs to another user")
+		return
+	}
 	err := s.store.Release(r.PathValue("leaseId"), owner)
 	if errors.Is(err, errLeaseForbidden) {
 		writeError(w, http.StatusForbidden, "FORBIDDEN", "lease belongs to another user")
@@ -230,6 +256,9 @@ func (s *Server) release(w http.ResponseWriter, r *http.Request, owner string) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "could not release lease")
 		return
+	}
+	if lease != nil {
+		logLeaseEnded(lease, "client-release")
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

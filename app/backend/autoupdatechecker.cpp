@@ -6,19 +6,10 @@
 #include <QJsonObject>
 
 AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
-    QObject(parent)
+    QObject(parent),
+    m_Nam(nullptr),
+    m_Checking(false)
 {
-    m_Nam = new QNetworkAccessManager(this);
-
-    // Never communicate over HTTP
-    m_Nam->setStrictTransportSecurityEnabled(true);
-
-    // Allow HTTP redirects
-    m_Nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
-
-    connect(m_Nam, &QNetworkAccessManager::finished,
-            this, &AutoUpdateChecker::handleUpdateCheckRequestFinished);
-
     QString currentVersion(VERSION_STR);
     qDebug() << "Current GilStreaming version:" << currentVersion;
     parseStringToVersionQuad(currentVersion, m_CurrentVersionQuad);
@@ -29,12 +20,20 @@ AutoUpdateChecker::AutoUpdateChecker(QObject *parent) :
 
 void AutoUpdateChecker::start()
 {
-    if (!m_Nam) {
-        Q_ASSERT(m_Nam);
+    if (m_Checking) {
         return;
     }
 
 #if defined(Q_OS_WIN32) || defined(Q_OS_DARWIN) || defined(STEAM_LINK) || defined(APP_IMAGE) // Only run update checker on platforms without auto-update
+
+    m_Nam = new QNetworkAccessManager(this);
+    m_Nam->setStrictTransportSecurityEnabled(true);
+    m_Nam->setRedirectPolicy(QNetworkRequest::NoLessSafeRedirectPolicy);
+    connect(m_Nam, &QNetworkAccessManager::finished,
+            this, &AutoUpdateChecker::handleUpdateCheckRequestFinished);
+    m_Checking = true;
+    emit checkingChanged();
+
 #if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0) && QT_VERSION < QT_VERSION_CHECK(5, 15, 1) && !defined(QT_NO_BEARERMANAGEMENT)
     // HACK: Set network accessibility to work around QTBUG-80947 (introduced in Qt 5.14.0 and fixed in Qt 5.15.1)
     QT_WARNING_PUSH
@@ -55,7 +54,22 @@ void AutoUpdateChecker::start()
     request.setAttribute(QNetworkRequest::HTTP2AllowedAttribute, true);
 #endif
     m_Nam->get(request);
+#else
+    emit onUpdateCheckFinished(false, tr("Updates are managed by your system package manager."));
 #endif
+}
+
+void AutoUpdateChecker::finishCheck(bool updateAvailable, const QString& message)
+{
+    if (m_Nam) {
+        m_Nam->deleteLater();
+        m_Nam = nullptr;
+    }
+    if (m_Checking) {
+        m_Checking = false;
+        emit checkingChanged();
+    }
+    emit onUpdateCheckFinished(updateAvailable, message);
 }
 
 void AutoUpdateChecker::parseStringToVersionQuad(QString& string, QVector<int>& version)
@@ -111,11 +125,6 @@ void AutoUpdateChecker::handleUpdateCheckRequestFinished(QNetworkReply* reply)
 {
     Q_ASSERT(reply->isFinished());
 
-    // Delete the QNetworkAccessManager to free resources and
-    // prevent the bearer plugin from polling in the background.
-    m_Nam->deleteLater();
-    m_Nam = nullptr;
-
     if (reply->error() == QNetworkReply::NoError) {
         QTextStream stream(reply);
 
@@ -133,12 +142,22 @@ void AutoUpdateChecker::handleUpdateCheckRequestFinished(QNetworkReply* reply)
         QJsonDocument jsonDoc = QJsonDocument::fromJson(jsonString.toUtf8(), &error);
         if (jsonDoc.isNull()) {
             qWarning() << "Update manifest malformed:" << error.errorString();
+            finishCheck(false, tr("Could not read the update information."));
             return;
         }
 
-        QJsonArray array = jsonDoc.array();
+        QJsonArray array;
+        if (jsonDoc.isArray()) {
+            array = jsonDoc.array();
+        }
+        else if (jsonDoc.isObject()) {
+            // Older continuous releases published a single object rather than
+            // an array. Accept both formats so installed clients can update.
+            array.append(jsonDoc.object());
+        }
         if (array.isEmpty()) {
             qWarning() << "Update manifest doesn't contain an array";
+            finishCheck(false, tr("The update information is empty."));
             return;
         }
 
@@ -194,14 +213,17 @@ void AutoUpdateChecker::handleUpdateCheckRequestFinished(QNetworkReply* reply)
                         qDebug() << "Update available";
                         emit onUpdateAvailable(updateObj["version"].toString(),
                                                updateObj["browser_url"].toString());
+                        finishCheck(true, tr("Version %1 is available.").arg(latestVersion));
                         return;
                     }
                     else if (res > 0) {
                         qDebug() << "Update manifest version lower than current version";
+                        finishCheck(false, tr("You're up to date (version %1).").arg(QStringLiteral(VERSION_STR)));
                         return;
                     }
                     else {
                         qDebug() << "Update manifest version equal to current version";
+                        finishCheck(false, tr("You're up to date (version %1).").arg(QStringLiteral(VERSION_STR)));
                         return;
                     }
                 }
@@ -213,9 +235,12 @@ void AutoUpdateChecker::handleUpdateCheckRequestFinished(QNetworkReply* reply)
 
         qWarning() << "No entry in update manifest found for current platform:"
                    << QSysInfo::buildCpuArchitecture() << getPlatform() << QSysInfo::kernelVersion();
+        finishCheck(false, tr("No update package is available for this platform."));
     }
     else {
         qWarning() << "Update checking failed with error:" << reply->error();
+        const QString errorMessage = reply->errorString();
         reply->deleteLater();
+        finishCheck(false, tr("Could not check for updates: %1").arg(errorMessage));
     }
 }

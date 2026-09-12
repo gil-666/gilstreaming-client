@@ -15,6 +15,10 @@ var (
 	errPoolExhausted  = errors.New("VM pool exhausted")
 	errLeaseNotFound  = errors.New("lease not found")
 	errLeaseForbidden = errors.New("lease belongs to another user")
+	errVMNotFound     = errors.New("VM not found")
+	errVMUnavailable  = errors.New("VM is unavailable")
+	errVMOccupied     = errors.New("VM is occupied")
+	errClientHasLease = errors.New("client already has a lease")
 )
 
 type VM struct {
@@ -219,9 +223,95 @@ func (s *Store) LeaseVM(id, owner string) (*Lease, VM, error) {
 	return cloneLease(lease), vm, nil
 }
 
+func (s *Store) AdminSnapshot() ([]VM, []*Lease, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := s.now().UTC()
+	before := len(s.leases)
+	s.reapLocked(now)
+	if len(s.leases) != before {
+		if err := s.persistLocked(); err != nil {
+			return nil, nil, err
+		}
+	}
+	vms := append([]VM(nil), s.vms...)
+	leases := make([]*Lease, 0, len(s.leases))
+	for _, lease := range s.leases {
+		leases = append(leases, cloneLease(lease))
+	}
+	return vms, leases, nil
+}
+
+func (s *Store) AdminLease(id string) (*Lease, VM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := s.now().UTC()
+	s.reapLocked(now)
+	lease, ok := s.leases[id]
+	if !ok {
+		return nil, VM{}, errLeaseNotFound
+	}
+	vm, ok := s.vmByIDLocked(lease.VMID)
+	if !ok {
+		return nil, VM{}, errVMNotFound
+	}
+	return cloneLease(lease), vm, nil
+}
+
+func (s *Store) AdminRelease(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.leases[id]; !ok {
+		return errLeaseNotFound
+	}
+	delete(s.leases, id)
+	return s.persistLocked()
+}
+
+func (s *Store) AdminAssign(vmID, owner, deviceID, deviceName string) (*Lease, VM, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := s.now().UTC()
+	s.reapLocked(now)
+	vm, ok := s.vmByIDLocked(vmID)
+	if !ok {
+		return nil, VM{}, errVMNotFound
+	}
+	if !vm.available() {
+		return nil, VM{}, errVMUnavailable
+	}
+	for _, lease := range s.leases {
+		if lease.VMID == vmID {
+			return nil, VM{}, errVMOccupied
+		}
+		if lease.Owner == owner && lease.DeviceID == deviceID {
+			return nil, VM{}, errClientHasLease
+		}
+	}
+	id, err := randomID()
+	if err != nil {
+		return nil, VM{}, err
+	}
+	lease := &Lease{
+		ID: id, VMID: vm.ID, Owner: owner, DeviceID: deviceID,
+		DeviceName: deviceName, CreatedAt: now, ExpiresAt: now.Add(s.ttl),
+	}
+	s.leases[id] = lease
+	if err := s.persistLocked(); err != nil {
+		delete(s.leases, id)
+		return nil, VM{}, err
+	}
+	return cloneLease(lease), vm, nil
+}
+
 func (s *Store) reapLocked(now time.Time) {
 	for id, lease := range s.leases {
 		if !lease.ExpiresAt.After(now) {
+			logLeaseEndedAt(lease, "lease-expired", now)
 			delete(s.leases, id)
 		}
 	}

@@ -11,8 +11,26 @@ the callback, exchanges the code using the client secret, loads the GILid
 profile, and returns a separate short-lived GilStreaming session to the desktop
 client. The GILid secret must exist only in the coordinator environment.
 
-The service does not yet perform VM health checks or cleanup.
-Keep it on a private network until TLS is terminated by a trusted reverse proxy.
+VM availability is based on configured enablement and successful Sunshine
+discovery. Keep the coordinator on a private network and expose it only through
+a trusted TLS-terminating reverse proxy.
+
+## Admin dashboard
+
+Open `/admin/` on the coordinator origin (for example,
+`https://gilstreaming.gilservers.com/admin/`). The coordinator redirects to
+GILid, completes OAuth on the server, and grants an HTTP-only admin session only
+when the GILid profile has `is_admin: true`. Non-admin accounts are denied. The
+dashboard shows available, busy, offline, and disabled VMs; identifies the
+current lease owner, device, and live connection duration; refreshes
+Sunshine discovery; closes an active Sunshine session and releases its lease;
+and can reserve a specific VM for an owner/device pair.
+
+When a session is released, kicked, or expires, the coordinator service log
+records its final duration and end reason.
+
+State-changing requests also require a non-simple request header as an
+additional cross-site request protection.
 
 ```powershell
 Copy-Item config.example.json config.json

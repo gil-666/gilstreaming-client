@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#171319">
+  <link rel="icon" type="image/png" href="/admin/assets/gilstreaming-logo.png">
+  <title>GilStreaming Control Room</title>
+  <style>
+    :root{--bg:#100e12;--surface:#19161c;--raised:#211d24;--line:#3c3440;--text:#f7f2f7;--muted:#bdb2c0;--purple:#c34ba9;--purple2:#e06bc5;--green:#42d392;--red:#ff6b7a;--amber:#f0b45a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 75% -20%,#4b183f 0,transparent 35rem),var(--bg);color:var(--text);font:15px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}button,input{font:inherit}button{cursor:pointer}.shell{width:min(1180px,calc(100% - 32px));margin:auto;padding:28px 0 40px}header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}.brand{display:flex;align-items:center;gap:14px}.mark{width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 9px 14px #c34ba94a)}.brand h1{font-size:20px;letter-spacing:-.02em;margin:0}.brand-name{color:var(--purple2)}.brand p{margin:2px 0 0;color:var(--muted);font-size:13px}.actions{display:flex;align-items:center;gap:10px}.admin-user{color:var(--muted);font-size:13px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.button{border:1px solid var(--line);border-radius:11px;background:var(--raised);color:var(--text);padding:9px 13px}.button:hover{border-color:#725d78;background:#29232d}.button.primary{border:0;background:var(--purple);font-weight:700}.button.primary:hover{background:var(--purple2)}.button.danger{color:#ffb5bd;border-color:#69343b}.button:disabled{opacity:.45;cursor:not-allowed}.live{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:13px}.live:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px #42d3921e}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}.metric,.card,.empty{border:1px solid var(--line);background:#19161ce8;border-radius:16px}.metric{padding:17px}.metric .label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.metric strong{display:block;font-size:28px;margin-top:3px}.section-title{display:flex;justify-content:space-between;align-items:end;margin:28px 2px 13px}.section-title h2{font-size:16px;margin:0}.section-title span{font-size:12px;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{padding:18px;box-shadow:0 14px 40px #0003}.card-head{display:flex;justify-content:space-between;gap:14px;align-items:start}.card h3{margin:0;font-size:17px}.id{font:12px ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--muted);margin-top:3px}.pill{border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.pill.available{color:#80e6b9;background:#17372b}.pill.busy{color:#f6c57c;background:#46351e}.pill.offline,.pill.disabled{color:#ffadb6;background:#47242a}.endpoints{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:17px 0}.endpoint{background:#121014;border:1px solid #302a33;border-radius:10px;padding:9px}.endpoint span{display:block;color:var(--muted);font-size:11px}.endpoint code{font-size:12px;word-break:break-all}.lease{border-top:1px solid var(--line);padding-top:15px;margin-top:5px}.who{display:flex;justify-content:space-between;gap:12px;margin-bottom:12px}.who strong,.who span{display:block}.who span{color:var(--muted);font-size:12px}.details{display:grid;grid-template-columns:1fr 1fr;gap:8px;color:var(--muted);font-size:12px}.details b{color:var(--text);font-weight:500}.card-actions{display:flex;justify-content:flex-end;margin-top:16px}.empty{padding:50px;text-align:center;color:var(--muted)}.site-footer{display:flex;align-items:center;justify-content:center;gap:7px;color:#8f8492;font-size:12px;padding-top:34px}.site-footer b{color:#b9aebb;font-weight:600}.toast{position:fixed;right:20px;bottom:20px;max-width:420px;padding:13px 16px;border-radius:12px;background:#29232d;border:1px solid #695b6d;box-shadow:0 15px 50px #0008;transform:translateY(100px);opacity:0;transition:.2s;z-index:10}.toast.show{transform:none;opacity:1}.toast.error{border-color:#994550;color:#ffd3d7}.modal{position:fixed;inset:0;background:#080609cc;display:none;place-items:center;padding:20px;z-index:5}.modal.open{display:grid}.dialog{width:min(520px,100%);background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 30px 90px #000}.dialog h2{margin:0 0 5px;font-size:19px}.dialog>p{margin:0 0 20px;color:var(--muted)}label{display:block;color:var(--muted);font-size:12px;margin:12px 0 5px}input{width:100%;border:1px solid var(--line);border-radius:10px;background:#100e12;color:var(--text);padding:11px 12px;outline:0}input:focus{border-color:var(--purple)}.dialog-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}@media(max-width:760px){.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,1fr)}header{align-items:flex-start;flex-direction:column}.actions{width:100%;justify-content:space-between;flex-wrap:wrap}}@media(max-width:480px){.shell{width:min(100% - 20px,1180px);padding-top:18px}.mark{width:46px;height:46px}.metrics{gap:7px}.metric{padding:12px}.metric strong{font-size:22px}.endpoints,.details{grid-template-columns:1fr}.live{display:none}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand"><img class="mark" src="/admin/assets/gilstreaming-logo.png" alt="GilStreaming"><div><h1><span class="brand-name">GilStreaming</span> Control Room</h1><p>VM pool and active sessions</p></div></div>
+      <div class="actions"><span class="live" id="updated">Connecting…</span><span class="admin-user" id="admin-user"></span><button class="button" id="refresh">Refresh discovery</button><button class="button" id="logout">Log out</button></div>
+    </header>
+    <section class="metrics">
+      <div class="metric"><span class="label">Total VMs</span><strong id="total">—</strong></div>
+      <div class="metric"><span class="label">Available</span><strong id="available">—</strong></div>
+      <div class="metric"><span class="label">Busy</span><strong id="busy">—</strong></div>
+    </section>
+    <div class="section-title"><h2>Gaming VMs</h2><span>Updates every 5 seconds</span></div>
+    <section class="grid" id="vms"><div class="empty">Loading VM pool…</div></section>
+    <footer class="site-footer"><span>GilStreaming</span><span>•</span><span>Powered by <b>GilServers</b></span></footer>
+  </main>
+
+  <div class="modal" id="assign-modal" role="dialog" aria-modal="true" aria-labelledby="assign-title">
+    <form class="dialog" id="assign-form">
+      <h2 id="assign-title">Assign VM manually</h2>
+      <p>The client will recover this reservation when the owner signs in from the matching device.</p>
+      <input type="hidden" id="vm-id">
+      <label for="owner-id">GILid owner ID</label><input id="owner-id" required maxlength="256" autocomplete="off">
+      <label for="device-id">Client device ID</label><input id="device-id" required maxlength="256" autocomplete="off">
+      <label for="device-name">Device name</label><input id="device-name" maxlength="128" autocomplete="off" placeholder="Optional label">
+      <div class="dialog-actions"><button type="button" class="button" id="cancel-assign">Cancel</button><button class="button primary" type="submit">Assign VM</button></div>
+    </form>
+  </div>
+  <div class="toast" id="toast" role="status"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const state = { vms: [], timer: null };
+    const request = async (path, options = {}) => {
+      options.headers = Object.assign({'X-GilStreaming-Admin':'1'}, options.headers || {});
+      const response = await fetch(path, options);
+      if (response.status === 204) return null;
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(body.message || `Request failed (${response.status})`), {code: body.code});
+      return body;
+    };
+    const showToast = (message, error = false) => {
+      const toast = $('toast'); toast.textContent = message; toast.className = `toast show${error ? ' error' : ''}`;
+      clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.className = 'toast', 4200);
+    };
+    const text = (tag, value, className) => { const node = document.createElement(tag); node.textContent = value == null ? '' : value; if (className) node.className = className; return node; };
+    const detail = (label, value) => { const node = document.createElement('div'); node.append(text('span', label)); node.append(text('b', value || '—')); return node; };
+    const formatDuration = seconds => { seconds=Math.max(0,Math.floor(seconds)); const hours=Math.floor(seconds/3600); const minutes=Math.floor((seconds%3600)/60); const secs=seconds%60; return hours ? `${hours}h ${minutes}m ${secs}s` : minutes ? `${minutes}m ${secs}s` : `${secs}s`; };
+    const durationDetail = lease => { const node=detail('Connected for',formatDuration(lease.connectedSeconds)); const value=node.querySelector('b'); value.dataset.connectedAt=lease.createdAt; return node; };
+    const updateDurations = () => document.querySelectorAll('[data-connected-at]').forEach(node => { node.textContent=formatDuration((Date.now()-new Date(node.dataset.connectedAt).getTime())/1000); });
+    function render(data) {
+      state.vms = data.vms || [];
+	  const admin = data.admin || {}; $('admin-user').textContent = admin.username || admin.email || '';
+      $('total').textContent = state.vms.length;
+      $('available').textContent = state.vms.filter(vm => vm.status === 'available').length;
+      $('busy').textContent = state.vms.filter(vm => vm.status === 'busy').length;
+      $('updated').textContent = `Updated ${new Date(data.generatedAt).toLocaleTimeString()}`;
+      const grid = $('vms'); grid.replaceChildren();
+      if (!state.vms.length) { grid.append(text('div','No VMs configured','empty')); return; }
+      state.vms.forEach(vm => {
+        const card = text('article','', 'card');
+        const head = text('div','', 'card-head'); const title = text('div'); title.append(text('h3',vm.name || vm.id)); title.append(text('div',vm.id,'id'));
+        head.append(title); head.append(text('span',vm.status,'pill '+vm.status)); card.append(head);
+        const endpoints = text('div','', 'endpoints'); endpoints.append(detail('Local endpoint',vm.localEndpoint)); endpoints.append(detail('Client endpoint',vm.publicEndpoint)); card.append(endpoints);
+        if (vm.lease) {
+          const lease = text('div','', 'lease'); const who = text('div','', 'who'); const identity = text('div'); identity.append(text('strong',vm.lease.ownerName)); identity.append(text('span',vm.lease.ownerEmail || vm.lease.ownerId)); who.append(identity); who.append(text('span','BUSY','pill busy')); lease.append(who);
+          const details = text('div','', 'details'); details.append(detail('Device',vm.lease.deviceName || 'Unnamed')); details.append(durationDetail(vm.lease)); details.append(detail('Owner ID',vm.lease.ownerId)); details.append(detail('Device ID',vm.lease.deviceId)); lease.append(details);
+          const actions = text('div','', 'card-actions'); const kick = text('button','Kick out','button danger'); kick.onclick = () => kickLease(vm.lease.id,vm.name || vm.id); actions.append(kick); lease.append(actions); card.append(lease);
+        } else {
+          const actions = text('div','', 'card-actions'); const assign = text('button','Assign manually','button primary'); assign.disabled = vm.status !== 'available'; assign.onclick = () => openAssign(vm); actions.append(assign); card.append(actions);
+        }
+        grid.append(card);
+      });
+    }
+    async function load(refresh = false) {
+      try { render(await request('/admin/api/status'+(refresh?'?refresh=1':''))); }
+      catch (error) { showToast(error.message,true); }
+    }
+    async function kickLease(id, name) {
+      if (!confirm(`Disconnect the user and release ${name}?`)) return;
+      try { await request('/admin/api/leases/'+encodeURIComponent(id),{method:'DELETE'}); showToast(`${name} is now available`); await load(); }
+      catch (error) {
+        if (error.code === 'SUNSHINE_CLOSE_FAILED' && confirm(`${error.message}\n\nSunshine could not close the stream. Force-release the reservation anyway?`)) {
+          try { await request('/admin/api/leases/'+encodeURIComponent(id)+'?force=1',{method:'DELETE'}); showToast(`${name} reservation force-released`); await load(); } catch (forced) { showToast(forced.message,true); }
+        } else { showToast(error.message,true); }
+      }
+    }
+    function openAssign(vm) { $('vm-id').value=vm.id; $('assign-title').textContent=`Assign ${vm.name || vm.id}`; $('assign-modal').classList.add('open'); $('owner-id').focus(); }
+    function closeAssign() { $('assign-modal').classList.remove('open'); $('assign-form').reset(); }
+    $('assign-form').onsubmit = async event => { event.preventDefault(); try { await request('/admin/api/leases',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vmId:$('vm-id').value,ownerId:$('owner-id').value,deviceId:$('device-id').value,deviceName:$('device-name').value})}); closeAssign(); showToast('VM assigned'); await load(); } catch(error) { showToast(error.message,true); } };
+    $('cancel-assign').onclick = closeAssign;
+    $('assign-modal').onclick = event => { if (event.target === $('assign-modal')) closeAssign(); };
+    $('refresh').onclick = async () => { $('refresh').disabled=true; await load(true); $('refresh').disabled=false; };
+	$('logout').onclick = async () => { try { await request('/admin/logout',{method:'POST'}); location.assign('/admin/login'); } catch(error) { showToast(error.message,true); } };
+    document.addEventListener('keydown', event => { if(event.key === 'Escape') closeAssign(); });
+    load(); state.timer=setInterval(load,5000); setInterval(updateDurations,1000);
+  </script>
+</body>
+</html>

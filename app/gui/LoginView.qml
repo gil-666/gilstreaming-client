@@ -22,31 +22,6 @@ Item {
     }
 
     Rectangle {
-        anchors.fill: parent
-        color: window.appBackground
-
-        Rectangle {
-            width: Math.min(parent.width * 0.42, 520)
-            height: width
-            radius: width / 2
-            x: -width * 0.36
-            y: -height * 0.48
-            color: "#16c34ba9"
-        }
-
-        Rectangle {
-            width: Math.min(parent.width * 0.32, 380)
-            height: width
-            radius: width / 2
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.rightMargin: -width * 0.42
-            anchors.bottomMargin: -height * 0.56
-            color: "#0fc34ba9"
-        }
-    }
-
-    Rectangle {
         id: authCard
         anchors.centerIn: parent
         width: Math.min(parent.width - 48, 1040)
