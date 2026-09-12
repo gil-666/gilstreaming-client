@@ -95,6 +95,12 @@ jobs:
           cache: true
           aqtsource: git+https://github.com/miurahr/aqtinstall.git@073e34d7c2ab4ae6961ed7cca690b3abd5ba5a7e
 
+      - name: Set up Go for bundled TURN helper
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: coordinator/go.mod
+          cache-dependency-path: coordinator/go.sum
+
       - name: Set continuous build version
         if: matrix.configuration == 'Release'
         shell: pwsh
@@ -115,9 +121,11 @@ jobs:
           $configuration = "${{ matrix.configuration }}".ToLowerInvariant()
           $build = Join-Path $PWD "build\build-x64-$configuration"
           $source = Join-Path $build "app\$configuration\GilStreaming.exe"
+          $turnHelper = Join-Path $build "app\$configuration\GilStreamingTurnRelay.exe"
           $destination = Join-Path $PWD "dist\client-windows-$configuration"
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
           Copy-Item -LiteralPath $source -Destination $destination
+          Copy-Item -LiteralPath $turnHelper -Destination $destination
           Copy-Item "libs\windows\lib\x64\*.dll" -Destination $destination
           Copy-Item (Join-Path $build "AntiHooking\$configuration\AntiHooking.dll") -Destination $destination
           Copy-Item "app\SDL_GameControllerDB\gamecontrollerdb.txt" -Destination $destination
@@ -224,6 +232,12 @@ jobs:
             libswscale-dev libva-dev libvdpau-dev libxkbcommon-dev \
             wayland-protocols libdrm-dev libpulse-dev libasound2-dev
 
+      - name: Set up Go for bundled TURN helper
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: coordinator/go.mod
+          cache-dependency-path: coordinator/go.sum
+
       - name: Build client
         run: bash scripts/build-client.sh ${{ matrix.configuration }}
 
@@ -231,7 +245,8 @@ jobs:
         run: |
           mkdir -p dist
           tar -C "build/build-linux-${{ matrix.configuration }}/app" \
-            -czf "dist/GilStreaming-Linux-x64-${{ matrix.configuration }}.tar.gz" gilstreaming
+            -czf "dist/GilStreaming-Linux-x64-${{ matrix.configuration }}.tar.gz" \
+            gilstreaming gilstreaming-turn-relay
 
       - name: Upload Linux client
         uses: actions/upload-artifact@v6

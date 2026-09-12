@@ -10,16 +10,18 @@ authority for VM assignment.
 
 ```text
 GilStreaming client ──HTTPS/WSS──> Cloudflare/reverse proxy ──> Coordinator
-                                                                  │
-                                     authenticated relay channels ├──> assigned Sunshine VM
-                                               health and pairing ┘
+          │                                                       │
+          ├── native direct TCP/UDP when reachable ───────────────┤
+          └── Cloudflare TURN/UDP when direct is blocked ─────────┤
+                                      health, WSS TCP, and pairing ┘
 ```
 
-Public clients carry Sunshine TCP streams and UDP datagrams through separate
-authenticated WebSocket channels. Separate channels prevent a delayed video
-packet from blocking audio or control traffic. The coordinator translates only
-the fixed Sunshine port offsets to the private VM attached to the caller's
-lease. LAN mode bypasses the relay and connects directly.
+Public clients probe the assigned Sunshine endpoint before connecting. A
+reachable endpoint uses native GameStream TCP and UDP. If that route is blocked,
+Sunshine TCP uses authenticated WebSocket channels while UDP uses a short-lived
+Cloudflare TURN allocation, avoiding TCP head-of-line blocking for video. The
+coordinator's WebSocket UDP implementation remains available if TURN cannot be
+allocated. LAN mode bypasses all relays and connects directly.
 
 ## Session state machine
 

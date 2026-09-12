@@ -1,10 +1,16 @@
 #include "relaybridge.h"
 
 #include <QAbstractSocket>
+#include <QCoreApplication>
 #include <QDebug>
+#include <QElapsedTimer>
+#include <QFileInfo>
 #include <QHostAddress>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QNetworkRequest>
 #include <QNetworkDatagram>
+#include <QProcess>
 #include <QQueue>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -77,7 +83,8 @@ RelayBridge::~RelayBridge()
 }
 
 bool RelayBridge::start(const QUrl& relayUrl, const QString& accessToken,
-                        const QString& leaseId, int basePort, QString* errorMessage)
+                        const QString& leaseId, int basePort, const QJsonObject& turn,
+                        QString* errorMessage)
 {
     stop();
     if (!relayUrl.isValid() || (relayUrl.scheme() != "wss" && relayUrl.scheme() != "ws") ||
@@ -97,6 +104,7 @@ bool RelayBridge::start(const QUrl& relayUrl, const QString& accessToken,
     m_RelayUrl = relayUrl;
     m_AccessToken = accessToken;
     m_LeaseId = leaseId;
+    m_BasePort = basePort;
     m_Running = true;
 
     for (int offset : TCP_OFFSETS) {
@@ -117,6 +125,27 @@ bool RelayBridge::start(const QUrl& relayUrl, const QString& accessToken,
         m_TcpEndpoints.append(endpoint);
     }
 
+    QString turnError;
+    if (!startTurnHelper(turn, basePort, &turnError)) {
+        if (!turn.isEmpty()) {
+            qWarning() << "Native TURN/UDP unavailable; using WebSocket UDP fallback:" << turnError;
+        }
+        if (!startWebSocketUdpFallback(basePort, errorMessage)) {
+            stop();
+            return false;
+        }
+    }
+
+    qInfo() << "Local Sunshine relay bridge listening on 127.0.0.1 with base port" << basePort;
+    m_KeepaliveTimer.start();
+    return true;
+}
+
+bool RelayBridge::startWebSocketUdpFallback(int basePort, QString* errorMessage)
+{
+    if (!m_UdpEndpoints.isEmpty()) {
+        return true;
+    }
     for (int offset : UDP_OFFSETS) {
         UdpEndpoint* endpoint = new UdpEndpoint(offset, this);
         if (!endpoint->socket->bind(QHostAddress::LocalHost,
@@ -127,7 +156,11 @@ bool RelayBridge::start(const QUrl& relayUrl, const QString& accessToken,
                 *errorMessage = tr("Could not open the local relay port %1: %2")
                         .arg(basePort + offset).arg(details);
             }
-            stop();
+            for (UdpEndpoint* existing : std::as_const(m_UdpEndpoints)) {
+                existing->socket->close();
+                delete existing;
+            }
+            m_UdpEndpoints.clear();
             return false;
         }
         connect(endpoint->socket, &QUdpSocket::readyRead, this, [this, endpoint]() {
@@ -152,16 +185,129 @@ bool RelayBridge::start(const QUrl& relayUrl, const QString& accessToken,
         });
         m_UdpEndpoints.append(endpoint);
     }
-
-    qInfo() << "Local Sunshine relay bridge listening on 127.0.0.1 with base port" << basePort;
-    m_KeepaliveTimer.start();
     return true;
+}
+
+bool RelayBridge::startTurnHelper(const QJsonObject& turn, int basePort, QString* errorMessage)
+{
+    const QString server = turn.value("server").toString();
+    const int port = turn.value("port").toInt();
+    const QString username = turn.value("username").toString();
+    const QString credential = turn.value("credential").toString();
+    const QString peerAddress = turn.value("peerAddress").toString();
+    const int peerBasePort = turn.value("peerBasePort").toInt();
+    if (server.isEmpty() || port < 1 || port > 65535 || username.isEmpty() ||
+            credential.isEmpty() || peerAddress.isEmpty() || peerBasePort < 1 ||
+            peerBasePort + 21 > 65535) {
+        if (errorMessage != nullptr) {
+            *errorMessage = tr("The coordinator did not provide usable TURN credentials.");
+        }
+        return false;
+    }
+
+#ifdef Q_OS_WIN
+    const QString helperName = QStringLiteral("GilStreamingTurnRelay.exe");
+#else
+    const QString helperName = QStringLiteral("gilstreaming-turn-relay");
+#endif
+    const QString helperPath = QCoreApplication::applicationDirPath() + QLatin1Char('/') + helperName;
+    if (!QFileInfo::exists(helperPath)) {
+        if (errorMessage != nullptr) {
+            *errorMessage = tr("The bundled TURN helper is missing.");
+        }
+        return false;
+    }
+
+    QProcess* process = new QProcess(this);
+    process->setProgram(helperPath);
+    process->setProcessChannelMode(QProcess::SeparateChannels);
+    process->start(QIODevice::ReadWrite);
+    if (!process->waitForStarted(3000)) {
+        if (errorMessage != nullptr) {
+            *errorMessage = tr("Could not start the bundled TURN helper: %1")
+                    .arg(process->errorString());
+        }
+        delete process;
+        return false;
+    }
+
+    QJsonObject config{
+        {"serverAddress", server + QLatin1Char(':') + QString::number(port)},
+        {"username", username},
+        {"credential", credential},
+        {"peerAddress", peerAddress},
+        {"peerBasePort", peerBasePort},
+        {"localBasePort", basePort}
+    };
+    process->write(QJsonDocument(config).toJson(QJsonDocument::Compact));
+    process->write("\n");
+    process->closeWriteChannel();
+
+    QByteArray output;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < 10000 && process->state() != QProcess::NotRunning &&
+           !output.contains('\n')) {
+        process->waitForReadyRead(qMin(500, 10000 - static_cast<int>(timer.elapsed())));
+        output.append(process->readAllStandardOutput());
+    }
+    output.append(process->readAllStandardOutput());
+    if (!output.startsWith("READY ")) {
+        const QString details = QString::fromUtf8(process->readAllStandardError()).trimmed();
+        process->kill();
+        process->waitForFinished(1000);
+        if (errorMessage != nullptr) {
+            *errorMessage = details.isEmpty()
+                    ? tr("The TURN allocation timed out.")
+                    : tr("The TURN allocation failed: %1").arg(details);
+        }
+        delete process;
+        return false;
+    }
+
+    m_TurnProcess = process;
+    connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+            [this, process](int exitCode, QProcess::ExitStatus) {
+        if (m_TurnProcess != process) {
+            return;
+        }
+        m_TurnProcess = nullptr;
+        qWarning() << "TURN UDP helper exited with code" << exitCode
+                   << QString::fromUtf8(process->readAllStandardError()).trimmed();
+        process->deleteLater();
+        if (m_Running) {
+            QString fallbackError;
+            if (!startWebSocketUdpFallback(m_BasePort, &fallbackError)) {
+                qWarning() << "Could not activate WebSocket UDP fallback:" << fallbackError;
+                stop();
+            }
+        }
+    });
+    qInfo() << "Native TURN/UDP relay active:" << QString::fromUtf8(output).trimmed();
+    return true;
+}
+
+void RelayBridge::stopTurnHelper()
+{
+    if (m_TurnProcess == nullptr) {
+        return;
+    }
+    QProcess* process = m_TurnProcess;
+    m_TurnProcess = nullptr;
+    disconnect(process, nullptr, this, nullptr);
+    process->terminate();
+    if (!process->waitForFinished(1500)) {
+        process->kill();
+        process->waitForFinished(1000);
+    }
+    delete process;
 }
 
 void RelayBridge::stop()
 {
     m_Running = false;
     m_KeepaliveTimer.stop();
+    stopTurnHelper();
 
     const QList<TcpTunnel*> tunnels = m_TcpTunnels;
     for (TcpTunnel* tunnel : tunnels) {
@@ -187,6 +333,7 @@ void RelayBridge::stop()
     m_RelayUrl.clear();
     m_AccessToken.clear();
     m_LeaseId.clear();
+    m_BasePort = 0;
 }
 
 QNetworkRequest RelayBridge::relayRequest(const char* transport, int offset) const

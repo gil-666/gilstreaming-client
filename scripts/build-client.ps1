@@ -12,6 +12,9 @@ $configurationName = $Configuration.ToLowerInvariant()
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw "Git is required and must be available on PATH."
 }
+if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+    throw "Go 1.22 or newer is required to build the bundled TURN relay helper."
+}
 
 $qmake = $null
 if ($QtBin) {
@@ -72,5 +75,16 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 $binary = Join-Path $buildDir "app\$configurationName\GilStreaming.exe"
 if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
     throw "Build completed but the client executable was not found at $binary"
+}
+
+$turnHelper = Join-Path (Split-Path -Parent $binary) "GilStreamingTurnRelay.exe"
+Write-Host "Building bundled TURN UDP helper..."
+Push-Location (Join-Path $repoRoot "coordinator")
+try {
+    & go build -trimpath -ldflags "-H=windowsgui" -o $turnHelper .\cmd\gilstreaming-turn-relay
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+finally {
+    Pop-Location
 }
 Write-Host "Client built at $binary"

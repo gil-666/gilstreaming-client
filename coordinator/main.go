@@ -28,6 +28,7 @@ type Server struct {
 	adminAuth  *AdminAuth
 	pairer     *SunshinePairer
 	discovery  *SunshineDiscovery
+	turn       *TurnProvider
 }
 
 func main() {
@@ -63,6 +64,13 @@ func main() {
 	}
 	server := newServer(store, authBroker)
 	server.discovery = discovery
+	server.turn, err = NewTurnProviderFromEnvironment()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if server.turn == nil {
+		log.Printf("Cloudflare TURN is not configured; public clients will use the WebSocket fallback")
+	}
 	if err := discovery.Refresh(context.Background(), store); err != nil {
 		log.Printf("initial Sunshine discovery failed; VMs will refresh on demand: %v", err)
 	}
@@ -194,6 +202,20 @@ func (s *Server) createLease(w http.ResponseWriter, r *http.Request, owner strin
 	if r.Header.Get("X-GilStreaming-LAN") != "1" {
 		response["relay"] = map[string]any{
 			"url": relayURLForRequest(r), "basePort": vm.StreamPort,
+		}
+		if s.turn != nil {
+			credentials, turnErr := s.turn.Credentials(r.Context())
+			if turnErr != nil {
+				log.Printf("Cloudflare TURN credentials unavailable for lease=%s: %v", lease.ID, turnErr)
+			} else {
+				peerAddress, peerPort := vm.ClientEndpoint()
+				response["turn"] = map[string]any{
+					"server": credentials.Server, "port": credentials.Port,
+					"username": credentials.Username, "credential": credentials.Credential,
+					"expiresAt":   credentials.ExpiresAt,
+					"peerAddress": peerAddress, "peerBasePort": peerPort,
+				}
+			}
 		}
 	}
 	writeJSON(w, http.StatusCreated, response)

@@ -72,13 +72,28 @@ $env:GILSTREAMING_COORDINATOR_URL = "http://127.0.0.1:6766"
 
 Production clients default to `https://gilstreaming.gilservers.com`.
 
+## Cloudflare TURN fallback
+
+Create a Realtime TURN key in the Cloudflare dashboard, then add its **TURN key
+ID** and **TURN key API token** to `.env` as
+`CLOUDFLARE_TURN_KEY_ID` and `CLOUDFLARE_TURN_API_TOKEN`. These are the values
+shown when creating a TURN key, not a general Cloudflare account API token. The
+coordinator uses the permanent token only server-side to mint a separate
+24-hour credential for each lease. Restart the coordinator after changing the
+environment.
+
+The installed desktop includes `GilStreamingTurnRelay.exe`; users do not install
+or configure anything else. It first uses native GameStream when the VM is
+reachable. If the ISP blocks that path, WSS carries TCP and Cloudflare TURN/UDP
+carries video, audio, and input. Allow outbound UDP port `3478` on client
+networks. Keep the router's forwarded Sunshine UDP ports active so Cloudflare's
+relay can reach the assigned VM.
+
 The private coordinator-side endpoints and Sunshine base port are populated by
-mDNS. Public clients receive an authenticated `wss://` relay endpoint on the
-coordinator hostname. The desktop binds Sunshine's port family on loopback and
-the coordinator translates those connections to only the VM owned by the
-caller's active lease. `publicAddress` remains available for compatibility, but
-the GilStreaming desktop does not require the router's Sunshine ports to be
-reachable. Do not publish Sunshine's Web UI port (`47990`).
+mDNS. Public clients receive the public Sunshine endpoint, an authenticated
+`wss://` relay endpoint, and optional short-lived TURN data. `publicAddress` and
+the forwarded Sunshine streaming ports are used for direct connections and as
+the TURN peer. Do not publish Sunshine's Web UI port (`47990`).
 
 The reverse proxy in front of the coordinator must pass the `Upgrade` and
 `Connection` headers and use long read/send timeouts for `/v1/relay`. The relay

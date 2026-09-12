@@ -26,11 +26,14 @@ See [docs/architecture.md](docs/architecture.md) and
 [docs/coordinator-api.md](docs/coordinator-api.md) for the initial design.
 
 For public streaming, the coordinator endpoint is
-`https://gilstreaming.gilservers.com`. The desktop uses authenticated WebSocket
-relay channels on that same HTTPS hostname, allowing GameStream traffic to work
-on networks that block Sunshine's public ports. Private VM addresses, lease
-routing, and the Sunshine Web UI remain coordinator-only. The LAN coordinator
-setting continues to connect directly for local testing.
+`https://gilstreaming.gilservers.com`. The desktop first probes the assigned
+Sunshine public endpoint and uses the native connection when reachable. On a
+restrictive network it automatically carries TCP through authenticated
+WebSocket channels on that HTTPS hostname and native UDP through Cloudflare
+Realtime TURN. The older WebSocket UDP path remains a last-resort fallback.
+Private VM addresses, lease routing, permanent TURN credentials, and the
+Sunshine Web UI remain coordinator-only. The LAN coordinator setting continues
+to connect directly for local testing.
 
 ## Portable build and run scripts
 
@@ -69,7 +72,7 @@ bash scripts/run-client-debug.sh
 bash scripts/build-client.sh release
 ```
 
-The coordinator scripts require Go 1.22 or newer. The build scripts initialize
+The coordinator and client scripts require Go 1.22 or newer. The build scripts initialize
 Git submodules automatically. Windows also downloads the prebuilt client
 dependencies when missing; Qt MSVC and Visual Studio Build Tools must already be
 installed. Linux requires the Qt and multimedia development packages listed
@@ -99,7 +102,8 @@ when that build is newer.
 - The application identity has been separated from Moonlight so settings and
   paired-host state are stored under GilStreaming.
 - A Go coordinator provides brokered GILid authentication, Sunshine mDNS IP
-  discovery, persistent atomic VM leases, and authenticated WSS stream relays.
+  discovery, persistent atomic VM leases, WSS TCP relay, and short-lived
+  Cloudflare TURN credentials for native UDP fallback.
 - The desktop has a GILid login screen, a debug-only login skip, coordinator VM
   assignment, lease heartbeats, and coordinator-only host entry.
 - Automatic Sunshine pairing is implemented; VM health/cleanup is the next

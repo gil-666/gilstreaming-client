@@ -18,6 +18,10 @@ if ! command -v git >/dev/null 2>&1; then
     echo "Git is required and must be available on PATH." >&2
     exit 1
 fi
+if ! command -v go >/dev/null 2>&1; then
+    echo "Go 1.22 or newer is required to build the bundled TURN relay helper." >&2
+    exit 1
+fi
 if command -v qmake6 >/dev/null 2>&1; then
     qmake_command="qmake6"
 elif command -v qmake >/dev/null 2>&1; then
@@ -58,4 +62,12 @@ if [[ ! -x "$binary" ]]; then
     echo "Build completed but the client executable was not found at $binary" >&2
     exit 1
 fi
+
+turn_helper="$build_dir/app/gilstreaming-turn-relay"
+echo "Building bundled TURN UDP helper..."
+(
+    cd "$repo_root/coordinator"
+    CGO_ENABLED=0 go build -trimpath -o "$turn_helper" ./cmd/gilstreaming-turn-relay
+)
+chmod 0755 "$turn_helper"
 echo "Client built at $binary"

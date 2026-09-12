@@ -59,6 +59,13 @@ func TestDevelopmentLoginToSingleVMLease(t *testing.T) {
 }
 
 func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
+	turnAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"iceServers":[{"urls":["turn:turn.cloudflare.com:3478?transport=udp"],"username":"lease-user","credential":"lease-secret"}]}`))
+	}))
+	defer turnAPI.Close()
+
 	store := NewStore([]VM{{
 		ID: "vm-1", DisplayName: "Gaming VM 1", StreamAddress: "192.168.1.23",
 		StreamPort: 47989, PublicAddress: "stream.gilservers.com", PublicPort: 47989, Enabled: true,
@@ -69,6 +76,10 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 		now: time.Now,
 	}
 	server := newServer(store, broker)
+	server.turn = &TurnProvider{
+		keyID: "test-key", apiToken: "test-token", baseURL: turnAPI.URL,
+		httpClient: turnAPI.Client(), credentialTTL: time.Hour,
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/auth/dev", broker.DevLogin)
 	mux.HandleFunc("POST /v1/leases", server.auth(server.createLease))
@@ -91,6 +102,14 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 			URL      string `json:"url"`
 			BasePort int    `json:"basePort"`
 		} `json:"relay"`
+		Turn struct {
+			Server       string `json:"server"`
+			Port         int    `json:"port"`
+			Username     string `json:"username"`
+			Credential   string `json:"credential"`
+			PeerAddress  string `json:"peerAddress"`
+			PeerBasePort int    `json:"peerBasePort"`
+		} `json:"turn"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&assigned); err != nil {
 		t.Fatal(err)
@@ -100,6 +119,11 @@ func TestLeaseReturnsPublicStreamingEndpoint(t *testing.T) {
 	}
 	if assigned.Relay.URL != "wss://gilstreaming.gilservers.com/v1/relay" || assigned.Relay.BasePort != 47989 {
 		t.Fatalf("unexpected relay endpoint: %#v", assigned.Relay)
+	}
+	if assigned.Turn.Server != "turn.cloudflare.com" || assigned.Turn.Port != 3478 ||
+		assigned.Turn.Username != "lease-user" || assigned.Turn.Credential != "lease-secret" ||
+		assigned.Turn.PeerAddress != "stream.gilservers.com" || assigned.Turn.PeerBasePort != 47989 {
+		t.Fatalf("unexpected TURN endpoint: %#v", assigned.Turn)
 	}
 }
 
@@ -132,6 +156,7 @@ func TestLeaseReturnsPrivateEndpointForLANCoordinator(t *testing.T) {
 			Port    int    `json:"port"`
 		} `json:"host"`
 		Relay json.RawMessage `json:"relay"`
+		Turn  json.RawMessage `json:"turn"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&assigned); err != nil {
 		t.Fatal(err)
@@ -141,6 +166,9 @@ func TestLeaseReturnsPrivateEndpointForLANCoordinator(t *testing.T) {
 	}
 	if len(assigned.Relay) != 0 {
 		t.Fatalf("LAN assignment unexpectedly included a relay: %s", assigned.Relay)
+	}
+	if len(assigned.Turn) != 0 {
+		t.Fatalf("LAN assignment unexpectedly included TURN credentials: %s", assigned.Turn)
 	}
 }
 

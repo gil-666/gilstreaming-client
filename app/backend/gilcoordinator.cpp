@@ -7,6 +7,8 @@
 #include <QNetworkReply>
 #include <QSettings>
 #include <QSysInfo>
+#include <QTcpSocket>
+#include <QTimer>
 #include <QUuid>
 
 namespace {
@@ -223,7 +225,9 @@ void GilCoordinator::requestVm()
 
         const QJsonObject host = response.value("host").toObject();
         const QJsonObject relay = response.value("relay").toObject();
+        const QJsonObject turn = response.value("turn").toObject();
         m_LeaseId = response.value("leaseId").toString();
+        const QString leaseId = m_LeaseId;
         const QString address = host.value("address").toString();
         const int port = host.value("port").toInt();
         if (m_LeaseId.isEmpty() || address.isEmpty() || port < 1 || port > 65535) {
@@ -232,30 +236,68 @@ void GilCoordinator::requestVm()
             return;
         }
 
-        QString connectionAddress = address;
-        int connectionPort = port;
-        if (!m_UseLanCoordinator && !relay.isEmpty()) {
-            QString relayError;
-            const QUrl relayUrl(relay.value("url").toString());
-            const int relayBasePort = relay.value("basePort").toInt();
-            if (!m_RelayBridge.start(relayUrl, m_AccessToken, m_LeaseId,
-                                     relayBasePort, &relayError)) {
-                fail(relayError);
-                reply->deleteLater();
+        auto completeAssignment = [this, host, relay, turn, address, port, leaseId](bool useRelay) {
+            if (m_LeaseId != leaseId || m_AccessToken.isEmpty()) {
                 return;
             }
-            connectionAddress = "127.0.0.1";
-            connectionPort = relayBasePort;
-        }
-        else {
-            m_RelayBridge.stop();
+
+            QString connectionAddress = address;
+            int connectionPort = port;
+            if (useRelay) {
+                QString relayError;
+                const QUrl relayUrl(relay.value("url").toString());
+                const int relayBasePort = relay.value("basePort").toInt();
+                setStatus(tr("Preparing a fast route through the relay…"));
+                if (!m_RelayBridge.start(relayUrl, m_AccessToken, leaseId,
+                                         relayBasePort, turn, &relayError)) {
+                    fail(relayError);
+                    return;
+                }
+                connectionAddress = QStringLiteral("127.0.0.1");
+                connectionPort = relayBasePort;
+            }
+            else {
+                m_RelayBridge.stop();
+            }
+
+            setBusy(false);
+            setStatus(tr("Connecting securely to %1…").arg(host.value("name").toString(address)));
+            m_HeartbeatTimer.start();
+            emit assignedHost(connectionAddress, connectionPort);
+        };
+
+        reply->deleteLater();
+
+        if (m_UseLanCoordinator || relay.isEmpty()) {
+            completeAssignment(false);
+            return;
         }
 
-        setBusy(false);
-        setStatus(tr("Connecting securely to %1…").arg(host.value("name").toString(address)));
-        m_HeartbeatTimer.start();
-        emit assignedHost(connectionAddress, connectionPort);
-        reply->deleteLater();
+        // Prefer the native route when the user's ISP can reach Sunshine. On
+        // restrictive networks, transparently switch TCP to the WSS bridge and
+        // UDP to Cloudflare TURN.
+        setStatus(tr("Checking the fastest route to your VM…"));
+        QTcpSocket* probe = new QTcpSocket(this);
+        QTimer* timeout = new QTimer(probe);
+        timeout->setSingleShot(true);
+        auto finishProbe = [probe, timeout, completeAssignment](bool useRelay) {
+            if (probe->property("gilstreamingProbeFinished").toBool()) {
+                return;
+            }
+            probe->setProperty("gilstreamingProbeFinished", true);
+            timeout->stop();
+            probe->abort();
+            probe->deleteLater();
+            completeAssignment(useRelay);
+        };
+        connect(probe, &QTcpSocket::connected, probe,
+                [finishProbe]() { finishProbe(false); });
+        connect(probe, &QTcpSocket::errorOccurred, probe,
+                [finishProbe](QAbstractSocket::SocketError) { finishProbe(true); });
+        connect(timeout, &QTimer::timeout, probe,
+                [finishProbe]() { finishProbe(true); });
+        probe->connectToHost(address, static_cast<quint16>(port));
+        timeout->start(1800);
     });
 }
 

@@ -46,13 +46,24 @@ The operation is idempotent for a user/device with an active lease. Success:
     "url": "wss://gilstreaming.gilservers.com/v1/relay",
     "basePort": 47989
   },
+  "turn": {
+    "server": "turn.cloudflare.com",
+    "port": 3478,
+    "username": "short-lived-username",
+    "credential": "short-lived-credential",
+    "expiresAt": "2026-09-08T19:55:00Z",
+    "peerAddress": "177.230.254.5",
+    "peerBasePort": 47989
+  },
   "pairingRequired": true
 }
 ```
 
-Public clients use `relay.url` and bind the returned Sunshine `basePort` family
-on loopback. LAN requests marked with `X-GilStreaming-LAN: 1` omit the relay and
-use `host` directly.
+Public clients try `host` directly first. If the probe fails, TCP uses
+`relay.url` and UDP uses the short-lived `turn` credential through a bundled
+helper, with WebSocket UDP as fallback. LAN requests marked with
+`X-GilStreaming-LAN: 1` omit relay data and use `host` directly. The permanent
+TURN key is never returned.
 
 ## Relay a Sunshine channel
 
