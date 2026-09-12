@@ -244,10 +244,39 @@ void RelayBridge::openTcpTunnel(TcpEndpoint* endpoint, QTcpSocket* localSocket)
             [tunnel](const QByteArray& payload) {
         if (tunnel->local->state() == QAbstractSocket::ConnectedState) {
             tunnel->local->write(payload);
+            // Sunshine closes each RTSP connection after its response. Push the
+            // response into the loopback socket before the relay WebSocket's
+            // close notification arrives.
+            tunnel->local->flush();
         }
     });
     connect(tunnel->websocket, &QWebSocket::disconnected, tunnel,
-            [this, tunnel]() { closeTcpTunnel(tunnel); });
+            [this, tunnel]() {
+        if (tunnel->closing) {
+            return;
+        }
+
+        // An upstream EOF is meaningful to protocols such as RTSP, where the
+        // peer closes the connection to delimit the response. Gracefully close
+        // the loopback side so queued bytes are delivered before EOF. Using
+        // abort() here can discard the response and surface as RTSP error -1.
+        tunnel->closing = true;
+        m_TcpTunnels.removeOne(tunnel);
+        tunnel->local->disconnectFromHost();
+        if (tunnel->local->state() == QAbstractSocket::UnconnectedState) {
+            tunnel->deleteLater();
+        }
+        else {
+            connect(tunnel->local, &QTcpSocket::disconnected,
+                    tunnel, &QObject::deleteLater);
+            QTimer::singleShot(2000, tunnel, [tunnel]() {
+                if (tunnel->local->state() != QAbstractSocket::UnconnectedState) {
+                    tunnel->local->abort();
+                }
+                tunnel->deleteLater();
+            });
+        }
+    });
     connect(tunnel->websocket,
             QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error), tunnel,
             [tunnel](QAbstractSocket::SocketError) {

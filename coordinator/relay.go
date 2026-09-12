@@ -91,16 +91,25 @@ func (s *Server) relay(w http.ResponseWriter, r *http.Request, owner string) {
 
 	done := make(chan struct{})
 	go s.watchRelayLease(done, client, upstream, leaseID, owner)
+	var relayErr error
 	if transport == "tcp" {
-		relayTCP(client, upstream)
+		relayErr = relayTCP(client, upstream)
 	} else {
-		relayUDP(client, upstream)
+		relayErr = relayUDP(client, upstream)
 	}
 	close(done)
+	if errors.Is(relayErr, io.EOF) {
+		// Preserve an orderly upstream EOF across the WebSocket tunnel. The
+		// client uses this to gracefully close its loopback TCP socket after all
+		// response bytes have been delivered (required by Sunshine's RTSP flow).
+		_ = client.WriteControl(websocket.CloseMessage,
+			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "upstream closed"),
+			time.Now().Add(time.Second))
+	}
 	client.Close()
 	upstream.Close()
-	log.Printf("VM relay closed lease=%s vm=%s transport=%s offset=%d duration=%s",
-		lease.ID, vm.ID, transport, offset, time.Since(started).Round(time.Second))
+	log.Printf("VM relay closed lease=%s vm=%s transport=%s offset=%d duration=%s reason=%v",
+		lease.ID, vm.ID, transport, offset, time.Since(started).Round(time.Second), relayErr)
 }
 
 func dialRelayUpstream(transport, target string, offset int) (net.Conn, error) {
@@ -134,7 +143,7 @@ func (s *Server) watchRelayLease(done <-chan struct{}, client *websocket.Conn, u
 	}
 }
 
-func relayTCP(client *websocket.Conn, upstream net.Conn) {
+func relayTCP(client *websocket.Conn, upstream net.Conn) error {
 	errorsDone := make(chan error, 2)
 	go func() {
 		for {
@@ -169,10 +178,10 @@ func relayTCP(client *websocket.Conn, upstream net.Conn) {
 			}
 		}
 	}()
-	<-errorsDone
+	return <-errorsDone
 }
 
-func relayUDP(client *websocket.Conn, upstream net.Conn) {
+func relayUDP(client *websocket.Conn, upstream net.Conn) error {
 	errorsDone := make(chan error, 2)
 	go func() {
 		for {
@@ -211,7 +220,7 @@ func relayUDP(client *websocket.Conn, upstream net.Conn) {
 			}
 		}
 	}()
-	<-errorsDone
+	return <-errorsDone
 }
 
 func writeAll(writer io.Writer, payload []byte) error {

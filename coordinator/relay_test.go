@@ -49,6 +49,14 @@ func TestTCPRelayForAssignedVM(t *testing.T) {
 	if messageType != websocket.BinaryMessage || string(response) != string(message) {
 		t.Fatalf("unexpected relay response: type=%d body=%q", messageType, response)
 	}
+
+	// The upstream closes after its response, like Sunshine does for each RTSP
+	// transaction. The WebSocket must preserve that as an orderly EOF after the
+	// response rather than abruptly resetting the client-side loopback socket.
+	_, _, err = connection.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		t.Fatalf("expected normal relay close after upstream EOF, got %v", err)
+	}
 }
 
 func TestUDPRelayPreservesDatagrams(t *testing.T) {
